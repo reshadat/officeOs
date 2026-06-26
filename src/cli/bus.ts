@@ -24,6 +24,7 @@ import { resolveEnv } from '../utils/env.js';
 import { IPCClient } from '../daemon/ipc-server.js';
 import { TelegramAPI } from '../telegram/api.js';
 import { logOutboundMessage, cacheLastSent } from '../telegram/logging.js';
+import { logOutboundSlackMessage, cacheLastSentSlack } from '../slack/logging.js';
 import type { Priority, Task, TaskStatus, EventCategory, EventSeverity, ApprovalCategory, ApprovalStatus, OrgContext, CronDefinition } from '../types/index.js';
 
 /**
@@ -1015,6 +1016,58 @@ busCommand
           const paths = resolvePaths(env.agentName, env.instanceId, env.org);
           const preview = message.length > 120 ? message.slice(0, 120) + '…' : message;
           logEvent(paths, env.agentName, env.org, 'message', 'telegram_sent', 'info', JSON.stringify({ chat_id: chatId, message_id: sentMessageId, preview }));
+        } catch { /* non-fatal */ }
+      }
+
+      console.log('Message sent');
+    } catch (err: any) {
+      console.error(`Failed to send: ${err.message || err}`);
+      process.exit(1);
+    }
+  });
+
+busCommand
+  .command('send-slack')
+  .description('Send a message to a Slack channel')
+  .argument('<channel-id>', 'Slack channel ID (C...)')
+  .argument('<message>', 'Message text (Slack mrkdwn)')
+  .action(async (channelId: string, message: string) => {
+    message = message.replace(/\\n/g, '\n').replace(/\\t/g, '\t');
+    const env = resolveEnv();
+    let botToken = '';
+
+    if (env.agentDir) {
+      const agentEnv = join(env.agentDir, '.env');
+      if (existsSync(agentEnv)) {
+        const content = readFileSync(agentEnv, 'utf-8');
+        const match = content.match(/^SLACK_BOT_TOKEN=(.+)$/m);
+        if (match && match[1].trim()) botToken = match[1].trim();
+      }
+    }
+    if (!botToken) botToken = process.env.SLACK_BOT_TOKEN || '';
+
+    if (!botToken) {
+      console.error('Error: SLACK_BOT_TOKEN not configured. Set it in your agent .env file.');
+      process.exit(1);
+    }
+
+    try {
+      const body = JSON.stringify({ channel: channelId, text: message, mrkdwn: true });
+      const res = await fetch('https://slack.com/api/chat.postMessage', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${botToken}`, 'Content-Type': 'application/json' },
+        body,
+      });
+      const data = await res.json() as any;
+      const slackTs = data?.ts || '';
+
+      if (env.agentName && env.ctxRoot) {
+        logOutboundSlackMessage(env.ctxRoot, env.agentName, channelId, message, slackTs);
+        cacheLastSentSlack(env.ctxRoot, env.agentName, channelId, message);
+        try {
+          const paths = resolvePaths(env.agentName, env.instanceId, env.org);
+          const preview = message.length > 120 ? message.slice(0, 120) + '…' : message;
+          logEvent(paths, env.agentName, env.org, 'message', 'slack_sent', 'info', JSON.stringify({ channel_id: channelId, slack_ts: slackTs, preview }));
         } catch { /* non-fatal */ }
       }
 
