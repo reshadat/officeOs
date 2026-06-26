@@ -4,8 +4,6 @@
 
 **Persistent 24/7 Claude Code agents you control from Slack.**
 
-Fork of [cortextOS](https://github.com/grandamenium/cortextos) with a Slack control plane, on-demand orchestrator, and cost controls.
-
 ---
 
 ```
@@ -24,35 +22,19 @@ Boss:    Done. "morning-inbox" cron set — runs daily at 08:00.
 
 ---
 
-## What's different from cortextOS
+## How it works
 
-| Feature | cortextOS | officeOs |
-|---|---|---|
-| Control plane | Telegram bot | Slack (Socket Mode) |
-| Orchestrator | Always running | On-demand (starts on first Slack message) |
-| Approval UI | Inline buttons | Text: type `allow` or `deny` |
-| Cost controls | None built in | Model tiering + theta-wave off by default |
-| Binary | `cortextos` | `officeos` (+ `cortextos` alias) |
-
----
-
-## Architecture
+officeOs runs Claude Code agents 24/7 in PTY sessions via PM2. You talk to them from Slack — DMs or a channel. Type `allow` or `deny` to approve tool calls. Agents coordinate via a shared file bus, run crons automatically, and restart themselves after crashes.
 
 ```
 Slack DM / Channel
       ↓
-slack-watcher/slack_watcher.py   (Python, PM2-managed, Slack Bolt Socket Mode)
-      ├─ IPC start-agent → daemon.sock   (if orchestrator not running)
-      ├─ write inbox file                (FastChecker picks up within 1s)
-      └─ "allow"/"deny" approval handler (writes hook-response-{id}.json)
-      ↓
 officeOs daemon (Node.js, PM2)
+  └─ SlackControlPlane per agent (Socket Mode, xapp- token)
+       ├─ "allow"/"deny" → writes hook-response-{id}.json (unblocks hook)
+       └─ any other message → FastChecker → injectMessage() → Claude PTY
       ↓
-SlackControlPlane.init() per agent — SlackSocketClient → FastChecker.queueSlackMessage()
-      ↓
-Agent PTY (Claude Code) → injectMessage() → Claude replies
-      ↓
-officeos bus send-slack <channel> "<reply>"
+Claude replies via: officeos bus send-slack <channel> "<reply>"
       ↓
 Slack
 ```
@@ -61,12 +43,12 @@ Slack
 
 ## Quick Start
 
-**Requirements:** Node.js 20+, Claude Code, PM2, Python 3.10+, Slack app.
+**Requirements:** Node.js 20+, Claude Code, PM2, Slack app.
 
 ```bash
 # 1. Clone and install
 git clone https://github.com/reshadat/officeOs.git
-cd officeOs/cortextos
+cd officeOs
 npm install && npm run build
 npm install -g .
 
@@ -80,48 +62,41 @@ officeos add-agent analyst --template analyst --org myorg
 cat > orgs/myorg/agents/orchestrator/.env << 'EOF'
 SLACK_BOT_TOKEN=xoxb-...
 SLACK_APP_TOKEN=xapp-...
-SLACK_CHANNEL_ID=C...
-SLACK_USER_ID=U...
+SLACK_USER_ID=U...                     # Required. Only this user can approve/deny.
+SLACK_CHANNEL_ID=C...                  # Single channel to listen to
+# SLACK_ALLOWED_CHANNELS=C...,C...     # Or: multiple channels (overrides SLACK_CHANNEL_ID)
+# SLACK_READONLY_USERS=U...,U...       # Can chat with agent, cannot approve/deny
+# SLACK_ALLOWED_DOMAINS=company.com    # Reject users whose Slack email doesn't match
 EOF
 
-# 4. Set orchestrator to on-demand (starts on first Slack message)
-# Edit orgs/myorg/agents/orchestrator/config.json:
-# { "enabled": true, "auto_start": false, "slack_polling": true, "runtime": "claude-code" }
-
-# 5. Disable theta-wave to save tokens
+# 4. Disable theta-wave (saves tokens)
 mkdir -p orgs/myorg/agents/orchestrator/experiments
 echo '{"theta_wave":{"enabled":false}}' > orgs/myorg/agents/orchestrator/experiments/config.json
 
-# 6. Wire Slack hooks in orchestrator settings.json
-# See "Hook Configuration" section below.
+# 5. Wire Slack hooks in orchestrator settings.json
+# See "Hook Configuration" below.
 
-# 7. Generate PM2 config and start
+# 6. Start
 officeos ecosystem
 pm2 start ecosystem.config.js && pm2 save && pm2 startup
-
-# 8. Start the Python Slack watcher
-cd slack-watcher && pip install -r requirements.txt
-cp .env.example .env && nano .env  # fill in tokens
-pm2 start slack_watcher.py --interpreter python3 --name slack-watcher
-pm2 save
 ```
 
 ---
 
 ## Slack App Setup
 
-1. Go to [api.slack.com/apps](https://api.slack.com/apps) → Create App → **Enable Socket Mode** → generate App-Level Token (`xapp-...`) with scope `connections:write`.
-2. **Bot Token Scopes:** `channels:history`, `chat:write`, `chat:write.public`, `groups:history`, `im:history`, `im:read`, `im:write`, `channels:read`
-3. **Event Subscriptions → Bot events:** `message.channels`, `message.groups`, `message.im`
-4. Install to workspace → get Bot Token (`xoxb-...`).
-5. Get your **User ID**: Profile → More → Copy Member ID (`U...`).
-6. Get **Channel ID**: Right-click channel → Copy link → extract the `C...` segment.
+1. [api.slack.com/apps](https://api.slack.com/apps) → Create App → **Enable Socket Mode** → generate App-Level Token (`xapp-...`) with scope `connections:write`
+2. **Bot Token Scopes:** `channels:history`, `chat:write`, `chat:write.public`, `groups:history`, `im:history`, `im:read`, `im:write`, `channels:read`, `mpim:write`
+3. **Event Subscriptions → Bot events:** `message.channels`, `message.groups`, `message.im`, `member_joined_channel`
+4. Install to workspace → copy Bot Token (`xoxb-...`)
+5. Your **User ID**: Profile → More → Copy Member ID (`U...`)
+6. **Channel ID**: Right-click channel → Copy link → extract `C...` segment
 
 ---
 
 ## Hook Configuration
 
-Add to your orchestrator's `settings.json` (replaces Telegram hooks):
+Add to your orchestrator's `settings.json`:
 
 ```json
 {
@@ -149,28 +124,26 @@ Add to your orchestrator's `settings.json` (replaces Telegram hooks):
 }
 ```
 
-Approval flow: the hook sends a Slack message describing the tool call. Reply `allow` or `deny`. 30-minute timeout: permission hooks deny, plan hooks auto-approve.
+When a tool call needs approval, the hook sends a Slack message and waits. Reply `allow` or `deny`. 30-minute timeout: permission hooks deny, plan hooks auto-approve.
 
 ---
 
-## Agent Config Reference
+## Agent Config
 
-**On-demand orchestrator** (`config.json`):
+**Orchestrator** (`config.json`):
 ```json
 {
   "enabled": true,
-  "auto_start": false,
   "slack_polling": true,
   "runtime": "claude-code",
   "model": "claude-sonnet-4-6"
 }
 ```
 
-**Cost-optimized worker** (`config.json`):
+**Worker agent** (`config.json`):
 ```json
 {
   "enabled": true,
-  "auto_start": true,
   "slack_polling": false,
   "runtime": "claude-code",
   "model": "claude-haiku-4-5-20251001"
@@ -182,23 +155,21 @@ Approval flow: the hook sends a Slack message describing the tool call. Reply `a
 { "theta_wave": { "enabled": false } }
 ```
 
-| Field | Default | Effect |
-|---|---|---|
-| `auto_start` | `true` | `false` = skip in discoverAndStart; start via IPC when Slack message arrives |
-| `slack_polling` | `true` | `false` = skip SlackControlPlane init (workers don't own a Slack socket) |
-| `model` | `claude-sonnet-4-6` | Set `claude-haiku-4-5-20251001` for ~10x cheaper workers |
+| Field | Notes |
+|---|---|
+| `slack_polling` | `false` on worker agents — only the orchestrator needs a Slack socket |
+| `model` | `claude-haiku-4-5-20251001` for workers — ~10x cheaper than Sonnet |
 
 ---
 
 ## Cost Controls
 
-**Model tiering** — set `model` per agent in `config.json`. Haiku is ~10x cheaper than Sonnet.
+**Model tiering** — set `model` per agent. Haiku for workers, Sonnet for orchestrator.
 
-**Theta-wave off** — write `{"theta_wave":{"enabled":false}}` to `experiments/config.json` in each agent dir. Ships off in officeOs templates.
+**Theta-wave off** — `{"theta_wave":{"enabled":false}}` in `experiments/config.json`. Do this for every agent.
 
-**Headroom (context compression)** — optional third-party tool for 60-90% token reduction on tool outputs:
+**Headroom** — optional context compression, 60-90% token reduction on tool outputs:
 ```bash
-# Proxy mode (zero code change)
 headroom proxy --port 8787 &
 # Add to agent .env:
 ANTHROPIC_BASE_URL=http://localhost:8787
@@ -218,10 +189,10 @@ officeos status              # Agent health table
 officeos doctor              # Check prerequisites
 officeos list-agents         # List agents
 officeos dashboard           # Start web dashboard (--port 3000)
-officeos bus send-slack <channel-id> '<message>'  # Send Slack message from agent
+officeos bus send-slack <channel-id> '<message>'
 ```
 
-`cortextos` is a legacy alias for `officeos` — existing scripts continue to work.
+`cortextos` is a legacy alias — existing scripts continue to work.
 
 ---
 
@@ -233,8 +204,7 @@ officeos bus send-slack <channel-id> '<message>'  # Send Slack message from agen
 | macOS or Linux | |
 | Claude Code | `npm install -g @anthropic-ai/claude-code` + `claude login` |
 | PM2 | `npm install -g pm2` |
-| Python 3.10+ | For `slack-watcher/` |
-| Slack app | See "Slack App Setup" above |
+| Slack app | See setup above |
 
 ---
 
@@ -242,32 +212,59 @@ officeos bus send-slack <channel-id> '<message>'  # Send Slack message from agen
 
 | Template | Description |
 |---|---|
-| `orchestrator` | Coordinates agents, manages goals, handles reviews, approves actions |
-| `analyst` | System health, metrics, theta-wave autoresearch, analytics |
+| `orchestrator` | Coordinates agents, manages goals, handles approvals |
+| `analyst` | System health, metrics, autoresearch |
 | `agent` | General-purpose worker |
 | `agent-codex` | Codex-runtime worker (`runtime: codex-app-server`) |
 
 ---
 
-## Upstream
-
-officeOs tracks [grandamenium/cortextos](https://github.com/grandamenium/cortextos). To rebase:
-
-```bash
-git fetch upstream
-git rebase upstream/main officeOs
-```
-
-All officeOs changes are additive-only: new files in `src/slack/`, new hooks, `slack-watcher/`. Telegram code left intact as dead code (no BOT_TOKEN = no Telegram). Each commit is independently revertable.
-
----
-
 ## Security
 
-Approval gate: every tool call goes to Slack. Type `allow` or `deny`. 30-minute timeout denies automatically (permission hooks) or auto-approves (plan hooks). `SLACK_USER_ID` gates all messages — only your Slack user ID triggers the orchestrator.
+**Designed for corporate Slack.** Multiple trust levels, domain gating, prompt injection mitigations.
+
+### Access model
+
+| Env var | Who | What they can do |
+|---|---|---|
+| `SLACK_USER_ID` | You (owner) | Chat with agent, approve/deny tool calls. Required — daemon won't start without it. |
+| `SLACK_READONLY_USERS` | Colleagues, stakeholders | Chat with agent only. `allow`/`deny` replies silently ignored. |
+| *(anyone else)* | — | Completely ignored, even if they can see the channel. |
+
+### Channel control
+
+- `SLACK_CHANNEL_ID` or `SLACK_ALLOWED_CHANNELS` — explicit allowlist of channels. Bot ignores all other channels it's added to.
+- Owner DMs always accepted regardless of channel config.
+- Readonly users' DMs also accepted if their ID is in `SLACK_READONLY_USERS`.
+
+### Domain gating
+
+Set `SLACK_ALLOWED_DOMAINS=company.com` and the daemon calls `users.info` for every new sender, checks their Slack email domain, and rejects if it doesn't match. Result cached per session. Blocks guest accounts from other workspaces.
+
+### Channel invite control
+
+Bot handles `member_joined_channel` events. If someone other than the owner adds the bot to a channel, the bot immediately leaves and DMs the owner who tried. If the owner adds it, the channel is accepted into the runtime allowlist.
+
+Requires `member_joined_channel` in your Slack app's bot event subscriptions.
+
+### Message labeling
+
+READONLY messages tagged `[READONLY]` in injection header — no embedded prompt instructions. Add behavioral restrictions to the agent's `CLAUDE.md` if needed.
+
+### Residual risks
+
+READONLY users can still send crafted text that misleads the agent. Only add people to `SLACK_READONLY_USERS` that you'd trust with read access.
+
+### Approval gate
+
+Every tool call blocked by a hook sends a Slack message and waits. Only the owner (`SLACK_USER_ID`) can unblock it. 30-minute timeout: permission hooks deny automatically, plan hooks auto-approve.
 
 ---
 
 ## License
 
 MIT — see [LICENSE](./LICENSE).
+
+---
+
+Adapted from [cortextOS](https://github.com/grandamenium/cortextos) by grandamenium.

@@ -15,6 +15,7 @@ function splitText(text: string): string[] {
 
 export class SlackAPI {
   private client: WebClient;
+  private botUserIdCache: string | null = null;
 
   constructor(botToken: string) {
     this.client = new WebClient(botToken);
@@ -38,5 +39,33 @@ export class SlackAPI {
 
   async updateMessage(channelId: string, ts: string, text: string): Promise<void> {
     await this.client.chat.update({ channel: channelId, ts, text });
+  }
+
+  // Returns the bot's own Slack user ID. Cached after first call.
+  async getBotUserId(): Promise<string | null> {
+    if (this.botUserIdCache) return this.botUserIdCache;
+    try {
+      const res = await this.client.auth.test();
+      this.botUserIdCache = (res.user_id as string) || null;
+      return this.botUserIdCache;
+    } catch {
+      return null;
+    }
+  }
+
+  // Leave a channel. Silently succeeds if already not a member.
+  async leaveChannel(channelId: string): Promise<void> {
+    try {
+      await this.client.conversations.leave({ channel: channelId });
+    } catch { /* not a member, or DM — both fine */ }
+  }
+
+  // Open a DM with userId and send text.
+  async dmUser(userId: string, text: string): Promise<void> {
+    try {
+      const res = await this.client.conversations.open({ users: userId });
+      const dmChannelId = (res.channel as any)?.id;
+      if (dmChannelId) await this.sendMessage(dmChannelId, text);
+    } catch { /* user unreachable */ }
   }
 }

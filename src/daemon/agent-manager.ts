@@ -431,7 +431,7 @@ export class AgentManager {
     this.startAgentCronScheduler(name);
 
     // Wire Slack control plane if agent has Slack credentials
-    this.slackCP.init(name, agentDir, checker, config, log).catch((err) => {
+    this.slackCP.init(name, agentDir, checker, config, log, this.ctxRoot).catch((err) => {
       log(`Slack control plane init error: ${err.message || err}`);
     });
 

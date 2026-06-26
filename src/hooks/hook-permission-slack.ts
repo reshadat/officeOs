@@ -45,8 +45,9 @@ async function main(): Promise<void> {
     cleanupResponseFile(pendingFile);
   };
   process.on('exit', cleanup);
-  process.on('SIGTERM', () => { cleanup(); process.exit(0); });
-  process.on('SIGINT', () => { cleanup(); process.exit(0); });
+  // On signal: deny and exit — never allow on unexpected termination.
+  process.on('SIGTERM', () => { cleanup(); outputDecision('deny', 'Hook terminated (SIGTERM)'); });
+  process.on('SIGINT',  () => { cleanup(); outputDecision('deny', 'Hook terminated (SIGINT)'); });
 
   mkdirSync(stateDir, { recursive: true });
   writeFileSync(pendingFile, JSON.stringify({ uniqueId, agentName, tool_name, channelId }), 'utf-8');
@@ -87,6 +88,7 @@ async function main(): Promise<void> {
 }
 
 main().catch((err) => {
+  // Always deny on crash — never let an unhandled error silently allow a tool call.
   console.error('hook-permission-slack error:', err);
-  process.exit(1);
+  outputDecision('deny', `Hook crashed: ${err?.message ?? 'unknown error'}`);
 });
