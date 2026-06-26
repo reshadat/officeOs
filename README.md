@@ -261,6 +261,50 @@ Every tool call blocked by a hook sends a Slack message and waits. Only the owne
 
 ---
 
+## Docker (recommended for production)
+
+Docker limits blast radius: even if a hook fails and Claude runs unchecked, it can only touch what you explicitly mounted. Host filesystem untouched.
+
+Includes both agent runtimes — Claude Code and Codex.
+
+```bash
+# 1. Copy and fill env
+cp .env.docker.example .env
+# Set OPENAI_API_KEY, WORKSPACE_PATH (and optionally ANTHROPIC_API_KEY)
+
+# 2. Build and start
+docker-compose up -d
+
+# 3. Authenticate Claude Code (one-time, interactive OAuth)
+docker exec -it officeos claude login
+# Opens URL → authenticate in host browser → token stored in named volume
+
+# 4. Mount your orgs/ config outside (already in docker-compose.yml)
+# Agent .env files with SLACK_BOT_TOKEN etc. live in orgs/
+```
+
+### What's mounted
+
+| Mount | Type | Purpose |
+|---|---|---|
+| `claude-auth` volume → `/root/.claude` | Named volume | Claude Code OAuth session |
+| `codex-auth` volume → `/root/.codex` | Named volume | Codex session |
+| `officeos-state` volume → `/root/.officeos` | Named volume | Daemon state, Slack pending files |
+| `./orgs` → `/officeos/orgs` | Bind (read-only) | Agent configs, .env files |
+| `$WORKSPACE_PATH` → `/workspace` | Bind | The repo your agents work on |
+
+`~/.ssh`, `~/.aws`, host home — **not mounted**. Agents cannot reach them.
+
+### Security flags
+
+- `read_only: true` + `tmpfs /tmp` — root filesystem immutable
+- `cap_drop: ALL` + minimum caps back — no Linux privilege escalation
+- `no-new-privileges: true` — processes can't gain capabilities
+- `pids_limit: 200` — no fork bombs
+- `mem_limit: 4g`, `cpus: 2.0` — resource caps
+
+---
+
 ## License
 
 MIT — see [LICENSE](./LICENSE).

@@ -18,6 +18,7 @@ orgs/
 # Secrets
 .env
 !.env.example
+!.env.docker.example
 templates/*/.env
 .cortextos-env
 

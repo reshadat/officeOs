@@ -1,0 +1,65 @@
+services:
+  officeos:
+    build: .
+    image: officeos:latest
+    container_name: officeos
+    restart: unless-stopped
+
+    environment:
+      # Required: OpenAI key for Codex runtime workers
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      # Optional: fallback for Claude Code if not using interactive login
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+
+    volumes:
+      # Claude Code OAuth session (persist across restarts)
+      # First run: docker exec -it officeos claude login
+      - claude-auth:/root/.claude
+
+      # Codex auth (if it stores creds locally)
+      - codex-auth:/root/.codex
+
+      # officeOs daemon state: Slack pending files, agent state, bus inbox
+      - officeos-state:/root/.officeos
+
+      # Agent configs, .env files, settings.json, CLAUDE.md
+      # Mount your orgs/ directory — contains Slack tokens, agent configs
+      - ./orgs:/officeos/orgs:ro
+
+      # The workspace Claude/Codex agents work ON
+      # Limit blast radius: only this directory is reachable
+      - ${WORKSPACE_PATH:-./workspace}:/workspace
+
+    # Security hardening
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /root/.npm   # npm needs write access during claude login
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN        # node needs this for some npm ops
+      - SETUID
+      - SETGID
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 200
+    mem_limit: 4g
+    cpus: "2.0"
+
+    # Needed for node-pty PTY spawning
+    # Docker exposes /dev/ptmx by default on Linux.
+    # On macOS (Docker Desktop) this is handled transparently.
+    devices:
+      - /dev/ptmx:/dev/ptmx
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "3"
+
+volumes:
+  claude-auth:
+  codex-auth:
+  officeos-state:
