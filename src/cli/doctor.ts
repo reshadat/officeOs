@@ -372,6 +372,64 @@ export const doctorCommand = new Command('doctor')
       }
     }
 
+    // ── Critical hook binary checks ─────────────────────────────────────────
+    // In bypassPermissions mode the permission hook is the ONLY gate. A missing
+    // binary silently allows every tool call with zero notification.
+    const CRITICAL_HOOKS = [
+      { file: 'dist/hooks/hook-permission-slack.js', label: 'Permission hook (Slack)' },
+      { file: 'dist/hooks/hook-planmode-slack.js',   label: 'Plan-mode hook (Slack)'  },
+    ];
+    for (const { file, label } of CRITICAL_HOOKS) {
+      const p = join(frameworkRoot, file);
+      checks.push({
+        name: `Hook binary: ${label}`,
+        status: existsSync(p) ? 'pass' : 'fail',
+        message: existsSync(p) ? p : `Not found: ${p}`,
+        fix: existsSync(p) ? undefined : 'Run: npm run build',
+      });
+    }
+
+    // ── Slack env sanity per agent ────────────────────────────────────────────
+    // For every agent whose settings.json references a Slack hook, confirm that
+    // SLACK_BOT_TOKEN and SLACK_USER_ID are set. Missing SLACK_USER_ID is
+    // especially dangerous — daemon refuses to start, so the agent runs headless.
+    if (existsSync(orgsDir)) {
+      try {
+        for (const org of readdirSync(orgsDir)) {
+          const agentsRoot = join(orgsDir, org, 'agents');
+          if (!existsSync(agentsRoot)) continue;
+          for (const agent of readdirSync(agentsRoot)) {
+            const settingsPath = join(agentsRoot, agent, '.claude', 'settings.json');
+            const envPath      = join(agentsRoot, agent, '.env');
+            if (!existsSync(settingsPath)) continue;
+
+            let settingsText = '';
+            try { settingsText = readFileSync(settingsPath, 'utf-8'); } catch { continue; }
+            if (!settingsText.includes('hook-permission-slack')) continue; // agent doesn't use Slack hooks
+
+            const label = `${org}/${agent} Slack env`;
+            if (!existsSync(envPath)) {
+              checks.push({ name: label, status: 'fail', message: '.env missing', fix: `Create orgs/${org}/agents/${agent}/.env with SLACK_BOT_TOKEN, SLACK_APP_TOKEN, SLACK_USER_ID` });
+              continue;
+            }
+
+            const envText = readFileSync(envPath, 'utf-8');
+            const missing: string[] = [];
+            if (!envText.match(/^SLACK_BOT_TOKEN=.+/m)) missing.push('SLACK_BOT_TOKEN');
+            if (!envText.match(/^SLACK_APP_TOKEN=.+/m)) missing.push('SLACK_APP_TOKEN');
+            if (!envText.match(/^SLACK_USER_ID=.+/m))   missing.push('SLACK_USER_ID (required — daemon refuses to start without it)');
+
+            checks.push({
+              name: label,
+              status: missing.length === 0 ? 'pass' : 'fail',
+              message: missing.length === 0 ? 'OK' : `Missing: ${missing.join(', ')}`,
+              fix: missing.length > 0 ? `Add the missing vars to orgs/${org}/agents/${agent}/.env` : undefined,
+            });
+          }
+        }
+      } catch { /* ignore scan errors */ }
+    }
+
     // Display results
     let hasFailures = false;
     for (const check of checks) {
