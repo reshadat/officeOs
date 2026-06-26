@@ -47,11 +47,8 @@ services:
     mem_limit: 4g
     cpus: "2.0"
 
-    # Needed for node-pty PTY spawning
-    # Docker exposes /dev/ptmx by default on Linux.
-    # On macOS (Docker Desktop) this is handled transparently.
-    devices:
-      - /dev/ptmx:/dev/ptmx
+    # node-pty works without device mappings — containers get their own
+    # devpts namespace (/dev/pts) by default. No --privileged needed.
 
     logging:
       driver: json-file
