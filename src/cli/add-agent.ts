@@ -88,6 +88,29 @@ export const addAgentCommand = new Command('add-agent')
       process.exit(1);
     }
 
+    // Enforce globally unique agent names across all orgs.
+    // Bus inbox paths use agent name as the directory key — two agents with the
+    // same name in different orgs would share an inbox, causing silent misrouting.
+    const orgsDir = join(projectRoot, 'orgs');
+    if (existsSync(orgsDir)) {
+      const allOrgs = readdirSync(orgsDir, { withFileTypes: true })
+        .filter(d => d.isDirectory())
+        .map(d => d.name);
+      for (const o of allOrgs) {
+        const agentsPath = join(orgsDir, o, 'agents');
+        if (existsSync(agentsPath)) {
+          const taken = readdirSync(agentsPath, { withFileTypes: true })
+            .filter(d => d.isDirectory())
+            .map(d => d.name);
+          if (taken.includes(name) && o !== org) {
+            console.error(`Error: agent "${name}" already exists in org "${o}". Agent names must be unique across all orgs.`);
+            console.error(`Tip: use a namespaced name like "${o}-${name}" or "${org}-${name}".`);
+            process.exit(1);
+          }
+        }
+      }
+    }
+
     const agentDir = join(projectRoot, 'orgs', org, 'agents', name);
     if (existsSync(agentDir)) {
       console.error(`Agent "${name}" already exists at ${agentDir}`);

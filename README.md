@@ -61,6 +61,104 @@ Every agent declares a job description — what it handles, what it provides, wh
 
 When no specialist fits, the orchestrator handles it directly or tells you one doesn't exist yet.
 
+## Your office has departments
+
+An org is a team. Each team has an orchestrator and a set of specialists. You talk to one Slack interface — the top-level orchestrator — and it routes to whichever team or specialist handles the work.
+
+```
+You → Slack → your-orch
+                ├─ docs team
+                │    ├─ doc-writer
+                │    ├─ doc-reviewer
+                │    └─ release-notes-agent
+                └─ marketing team
+                     ├─ marketing-analyst
+                     └─ social-media-agent
+```
+
+```
+You:       Prep the release notes for v2.4 and draft a LinkedIn post.
+
+Chief:     Routing release notes to docs team.
+           Routing LinkedIn draft to marketing.
+
+           Release notes ready. LinkedIn draft ready.
+           Both in your inbox.
+```
+
+One Slack message. Two teams. You never thought about who does what.
+
+## Agents don't belong to teams
+
+The codebase agent lives in the engineering org. The docs team needs it to pull technical context for release notes. The marketing team needs it to write accurate product descriptions.
+
+Nobody spins up a second codebase agent. They use the same one.
+
+Mark an agent as shared in its `config.json`:
+
+```json
+{
+  "jd": {
+    "title": "Codebase Expert",
+    "shared": true
+  }
+}
+```
+
+Run `officeos sync-jds` and every active orchestrator gets this agent in its registry. One agent, used by the whole office.
+
+```
+marketing-orch:  need technical accuracy check on this product description
+  → routes to engineering/codebase-agent (shared)
+  ← "Auth flow description is correct. Performance numbers are outdated — p95 is 42ms not 80ms."
+marketing-orch:  updates draft, routes to social-media-agent for formatting
+```
+
+## Delegating a team
+
+Give Alice control of the docs team. Set her Slack user ID on the docs orchestrator and point it at a dedicated channel. She talks to `#docs-bot`. Her orch knows about all shared agents across the office — she can reach the codebase agent without coming to you.
+
+```bash
+# docs-orch .env
+SLACK_BOT_TOKEN=xoxb-...        # same bot, one Slack app
+SLACK_CHANNEL_ID=C_DOCS_BOT     # Alice's channel
+SLACK_USER_ID=U_ALICE           # Alice approves her team's tool calls
+```
+
+Alice owns her team's approval queue. Tool calls on shared agents (codebase, release-notes) go to the agent's configured owner — the infra owner. She can't approve writes to the codebase. She shouldn't.
+
+## Direct route vs team route
+
+```
+You:   Rewrite the intro paragraph of SETUP.md, make it shorter.
+Chief: Routing to doc-writer.
+       Done. 3 sentences → 1.
+```
+
+```
+You:   Prep everything for the v2.4 release — notes, announcement, socials.
+Chief: Routing to docs-orch for coordination.
+       docs-orch is sequencing: release-notes → doc-reviewer → marketing-orch → social-media-agent.
+       Will surface when ready.
+```
+
+## Setting up teams
+
+```bash
+officeos init docs
+officeos add-agent docs-orch           --template orchestrator --org docs
+officeos add-agent doc-writer          --template agent        --org docs
+officeos add-agent release-notes-agent --template agent        --org docs
+
+officeos init marketing
+officeos add-agent marketing-orch  --template orchestrator --org marketing
+officeos add-agent social-media    --template agent        --org marketing
+
+officeos sync-jds   # propagates shared agents to all active orchestrators
+```
+
+One rule: **agent names must be unique across the whole office.** Two teams can't both have an agent named `analyst`. Use `docs-analyst` and `marketing-analyst`. The CLI enforces this.
+
 ## Install
 
 ```bash
