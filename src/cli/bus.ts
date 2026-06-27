@@ -1034,6 +1034,31 @@ busCommand
   .option('--thread-ts <ts>', 'Reply in a thread (parent message timestamp)')
   .action(async (channelId: string, message: string, opts: { threadTs?: string }) => {
     message = message.replace(/\\n/g, '\n').replace(/\\t/g, '\t');
+
+    // Channel restriction gate — prevent data exfiltration to arbitrary channels
+    const ctxRoot = process.env.CTX_ROOT || '';
+    const agentName = process.env.CTX_AGENT_NAME || '';
+    const stateDir = ctxRoot && agentName ? join(ctxRoot, 'state', agentName) : '';
+
+    let originChannel: string | undefined;
+    if (stateDir) {
+      try {
+        const threadState = JSON.parse(readFileSync(join(stateDir, 'slack-thread.json'), 'utf-8'));
+        originChannel = threadState.channel;
+      } catch { /* no active thread — no restriction */ }
+    }
+
+    const outboundAllowlist = (process.env.SLACK_OUTBOUND_CHANNELS || '')
+      .split(',').map((s: string) => s.trim()).filter(Boolean);
+
+    if (originChannel || outboundAllowlist.length > 0) {
+      const allowed = outboundAllowlist.length > 0 ? outboundAllowlist : (originChannel ? [originChannel] : []);
+      if (!allowed.includes(channelId)) {
+        console.error(`send-slack: channel ${channelId} not allowed. Origin: ${originChannel ?? 'none'}. Set SLACK_OUTBOUND_CHANNELS to override.`);
+        process.exit(1);
+      }
+    }
+
     const env = resolveEnv();
     let botToken = '';
 

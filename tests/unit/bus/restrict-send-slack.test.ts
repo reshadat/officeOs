@@ -1,11 +1,7 @@
 import { describe, it, expect } from 'vitest';
 
-// Tests for the channel restriction logic in bus send-slack.
-// We test the decision logic directly (not the CLI process) to avoid needing
-// a full env setup.
-
 function isChannelAllowed(channelId: string, originChannel: string | undefined, outboundAllowlist: string[]): boolean {
-  if (!originChannel && outboundAllowlist.length === 0) return true; // unrestricted
+  if (!originChannel && outboundAllowlist.length === 0) return true;
   const allowed = outboundAllowlist.length > 0 ? outboundAllowlist : (originChannel ? [originChannel] : []);
   return allowed.includes(channelId);
 }
@@ -28,7 +24,6 @@ describe('send-slack channel restriction', () => {
   });
 
   it('blocks origin channel when allowlist overrides it', () => {
-    // allowlist takes full precedence when set — origin not auto-included
     expect(isChannelAllowed('C123', 'C123', ['C_ALLOWED_ONLY'])).toBe(false);
   });
 
