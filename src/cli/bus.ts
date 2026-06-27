@@ -1060,30 +1060,32 @@ busCommand
       process.exit(1);
     }
 
-    // Conversation restriction: post only to a conversation this agent has an
-    // ACTIVE reply target for (any recent inbound), or one in SLACK_OUTBOUND_CHANNELS.
-    // Prevents exfiltration to arbitrary channels, but — unlike the old single
-    // last-thread file — does NOT block a reply to user A just because user B
-    // messaged a different channel a moment later (the BLOCKER).
+    // Conversation restriction (DEFAULT-DENY): post only to a conversation this
+    // agent has an ACTIVE reply target for (any recent inbound) or one explicitly
+    // in SLACK_OUTBOUND_CHANNELS. With neither, refuse — a fresh agent with no
+    // inbound history must NOT be able to post anywhere (the fail-open hole).
+    // Unlike the old single last-thread file, the active SET means a reply to
+    // user A is never blocked just because user B messaged another channel.
     if (env.agentName && env.ctxRoot) {
       const stateDir = join(env.ctxRoot, 'state', env.agentName);
       const active = activeConversations(stateDir);
       const outboundAllowlist = (process.env.SLACK_OUTBOUND_CHANNELS || '')
         .split(',').map((s: string) => s.trim()).filter(Boolean);
 
-      if (active.size > 0 || outboundAllowlist.length > 0) {
-        const allowed = new Set<string>([...active, ...outboundAllowlist]);
-        if (!allowed.has(channelId)) {
-          console.error(`send-slack: channel ${channelId} not in active conversations or SLACK_OUTBOUND_CHANNELS.`);
+      // If a request id is given, the only valid channel is THAT request's target.
+      if (opts.requestId) {
+        const t = getTarget(stateDir, opts.requestId);
+        if (!t || t.conversationId !== channelId) {
+          console.error(`send-slack: channel ${channelId} does not match request ${opts.requestId}'s conversation.`);
           process.exit(1);
         }
-      }
-
-      // If the agent passed --request-id but no explicit thread, recover the
-      // thread from that request's stored target.
-      if (opts.requestId && !opts.threadTs) {
-        const t = getTarget(stateDir, opts.requestId);
-        if (t?.threadId) opts.threadTs = t.threadId;
+        if (!opts.threadTs && t.threadId) opts.threadTs = t.threadId;
+      } else {
+        const allowed = new Set<string>([...active, ...outboundAllowlist]);
+        if (!allowed.has(channelId)) {
+          console.error(`send-slack: channel ${channelId} not in active conversations or SLACK_OUTBOUND_CHANNELS — refusing (default-deny).`);
+          process.exit(1);
+        }
       }
     }
 

@@ -168,8 +168,12 @@ export function sanitizeForPtyInjection(input: string): string {
   return stripControlChars(input)
     .replace(/\r\n?/g, '\n')
     .replace(/`{3,}/g, '``')
+    // Neutralize forged channel headers (=== SLACK/AGENT MESSAGE/TELEGRAM from \u2026),
+    // and forged reply/ack/bus command lines (officeos|cortextos bus \u2026) so a
+    // slash-command or thread-context body can't impersonate a real inbound
+    // header or redirect a reply to an attacker-chosen channel.
     .replace(
-      /^([ \t\u00A0\u1680\u2000-\u200A\u202F\u205F\u3000\uFEFF]*)(={3,}\s*(?:AGENT MESSAGE|TELEGRAM)\b|Reply using:\s*cortextos\s+bus)/gim,
+      /^([ \t\u00A0\u1680\u2000-\u200A\u202F\u205F\u3000\uFEFF]*)(={3,}\s*(?:AGENT MESSAGE|TELEGRAM|SLACK)\b|(?:Reply|Ack)[^\n]*\b(?:officeos|cortextos)\s+bus\b|(?:officeos|cortextos)\s+bus\s+(?:send-slack|react|send-message|send-telegram|reply))/gim,
       '$1[quoted] $2',
     );
 }

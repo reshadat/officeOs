@@ -43,13 +43,26 @@ describe('reply-targets store (per-request, channel-agnostic)', () => {
     expect(activeConversations(dir, later).size).toBe(0);
   });
 
-  it('maps a thread to its owning request, first-writer-wins (ASK_HUMAN reply reuse)', () => {
+  it('maps a (channel,thread) to its owning request, first-writer-wins', () => {
     recordTarget(dir, 'r1', { conversationId: 'C1', threadId: 'T1', role: 'owner' }, 1000);
-    expect(getRequestIdForThread(dir, 'T1', 1001)).toBe('r1');
+    expect(getRequestIdForThread(dir, 'C1', 'T1', 1001)).toBe('r1');
     // a later message in the same thread must NOT steal the thread's id
     recordTarget(dir, 'r2', { conversationId: 'C1', threadId: 'T1', role: 'owner' }, 1002);
-    expect(getRequestIdForThread(dir, 'T1', 1003)).toBe('r1');
-    expect(getRequestIdForThread(dir, 'unknown', 1003)).toBeNull();
+    expect(getRequestIdForThread(dir, 'C1', 'T1', 1003)).toBe('r1');
+    // same thread ts in a DIFFERENT channel is a different thread (no collision)
+    expect(getRequestIdForThread(dir, 'C_OTHER', 'T1', 1003)).toBeNull();
+    expect(getRequestIdForThread(dir, 'C1', 'unknown', 1003)).toBeNull();
+  });
+
+  it('role is the immutable root — a readonly reply never flips an owner thread', () => {
+    recordTarget(dir, 'r1', { conversationId: 'C1', threadId: 'T1', role: 'owner' }, 1000);
+    // readonly actor replies in the owner thread (inherits r1) — role stays owner
+    recordTarget(dir, 'r1', { conversationId: 'C1', threadId: 'T1', role: 'readonly' }, 1001);
+    expect(getTarget(dir, 'r1', 1002)?.role).toBe('owner');
+    // and a readonly-rooted request is never upgraded to owner
+    recordTarget(dir, 'r2', { conversationId: 'C2', threadId: 'T2', role: 'readonly' }, 1000);
+    recordTarget(dir, 'r2', { conversationId: 'C2', threadId: 'T2', role: 'owner' }, 1001);
+    expect(getTarget(dir, 'r2', 1002)?.role).toBe('readonly');
   });
 
   it('mostRecentTargetForRole ignores readonly when finding the owner thread', () => {
