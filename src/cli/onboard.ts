@@ -178,8 +178,22 @@ async function collectSlackCreds(
   iface: Interface,
   reuse: SlackCreds | null,
 ): Promise<SlackCreds> {
-  console.log('\n  Connect Slack. Create an app at api.slack.com/apps (Socket Mode on).');
-  console.log('  See SETUP.md for the exact scopes and event subscriptions.\n');
+  console.log('\n  ── Connect Slack ───────────────────────────────────────────────');
+  console.log('  ~2 minutes. Do these in order, then paste the two tokens below.\n');
+  console.log('  1. https://api.slack.com/apps → "Create New App" → "From scratch".');
+  console.log('     Name it (e.g. "officeOs"), pick your workspace.');
+  console.log('  2. Settings → "Socket Mode" → toggle ON. When it asks for an');
+  console.log('     App-Level Token: name it, add scope "connections:write",');
+  console.log('     Generate → copy the xapp-… token.');
+  console.log('  3. Features → "OAuth & Permissions" → Bot Token Scopes → add ALL:');
+  console.log('       channels:history  chat:write  chat:write.public  groups:history');
+  console.log('       im:history  im:read  im:write  channels:read  mpim:write  reactions:write');
+  console.log('  4. Features → "Event Subscriptions" → toggle ON → Subscribe to bot');
+  console.log('     events → add: message.channels  message.groups  message.im  member_joined_channel');
+  console.log('  5. Settings → "Install App" → Install → copy the Bot Token (xoxb-…).');
+  console.log('  6. Your user id: Slack → your avatar → Profile → ⋮ More → Copy member ID (U…).');
+  console.log('  ────────────────────────────────────────────────────────────────');
+  console.log('  (Full reference + screenshots: SETUP.md)\n');
 
   let botToken: string;
   let appToken: string;
