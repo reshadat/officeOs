@@ -1,6 +1,6 @@
-<svg width="340" height="310" viewBox="0 0 340 310" xmlns="http://www.w3.org/2000/svg">
+<svg width="340" height="272" viewBox="0 0 340 272" xmlns="http://www.w3.org/2000/svg">
   <!-- dark background pill -->
-  <rect width="340" height="310" rx="24" fill="#0d1117"/>
+  <rect width="340" height="272" rx="24" fill="#0d1117"/>
 
   <!-- office building facade -->
   <rect x="80" y="60" width="180" height="160" rx="6" fill="none" stroke="#e6edf3" stroke-width="3"/>
@@ -54,6 +54,6 @@
   <path d="M316 55 Q304 68 316 81 Q296 74 296 68 Q296 62 316 55Z" fill="#e6edf3" opacity="0.7"/>
 
   <!-- label -->
-  <text x="170" y="252" font-family="ui-monospace, SFMono-Regular, monospace" font-size="28" font-weight="700" fill="#e6edf3" text-anchor="middle" letter-spacing="6">officeOs</text>
-  <text x="170" y="276" font-family="ui-monospace, SFMono-Regular, monospace" font-size="12" fill="#8b949e" text-anchor="middle" letter-spacing="2">one light always on</text>
+  <text x="170" y="244" font-family="ui-monospace, SFMono-Regular, monospace" font-size="32" font-weight="800" fill="#e6edf3" text-anchor="middle" letter-spacing="10">OFFICEOS</text>
+  <text x="170" y="263" font-family="ui-monospace, SFMono-Regular, monospace" font-size="10" fill="#8b949e" text-anchor="middle" letter-spacing="3">one light always on</text>
 </svg>
