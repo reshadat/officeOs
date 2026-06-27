@@ -229,6 +229,18 @@ describe('channel message loop', () => {
     expect(agent.injectMessage).toHaveBeenCalledTimes(1);
   }, 20000);
 
+  it('daemon stamps current-request with ONLY the request being processed this turn', async () => {
+    const agent = mockAgent();
+    const paths = makePaths(ctxRoot, 'orch');
+    const checker = new FastChecker(agent, paths, join(ctxRoot, 'fw'));
+    checker.queueSlackMessage(slackFmt('C_A', 'alice', 'rA'));
+    checker.queueSlackMessage(slackFmt('C_B', 'bob', 'rB'));
+
+    await (checker as any).pollCycle();
+    const cur = JSON.parse(readFileSync(join(paths.stateDir, 'current-request.json'), 'utf-8'));
+    expect(cur.request_ids).toEqual(['rA']); // the one being processed, never both
+  }, 20000);
+
   it('drain-on-failure: a failed inject does not drop the message', async () => {
     const agent = mockAgent();
     agent.injectMessage.mockReturnValueOnce(false); // first inject fails (e.g. session refresh)
