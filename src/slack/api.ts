@@ -21,7 +21,7 @@ export class SlackAPI {
     this.client = new WebClient(botToken);
   }
 
-  async sendMessage(channelId: string, text: string): Promise<{ ts: string; channel: string } | null> {
+  async sendMessage(channelId: string, text: string, threadTs?: string): Promise<{ ts: string; channel: string } | null> {
     const chunks = splitText(text);
     let result: { ts: string; channel: string } | null = null;
     for (const chunk of chunks) {
@@ -29,12 +29,35 @@ export class SlackAPI {
         channel: channelId,
         text: chunk,
         mrkdwn: true,
+        ...(threadTs ? { thread_ts: threadTs } : {}),
       });
       if (!result && res.ts && res.channel) {
         result = { ts: res.ts, channel: res.channel };
       }
     }
     return result;
+  }
+
+  async getThreadReplies(channelId: string, threadTs: string): Promise<Array<{ user?: string; text: string; ts: string; bot_id?: string }>> {
+    try {
+      const res = await this.client.conversations.replies({ channel: channelId, ts: threadTs, limit: 20 });
+      return ((res.messages || []) as any[]).map((m) => ({
+        user: m.user,
+        text: m.text || '',
+        ts: m.ts,
+        bot_id: m.bot_id,
+      }));
+    } catch (_e) {
+      return [];
+    }
+  }
+
+  async addReaction(channelId: string, ts: string, emoji: string): Promise<void> {
+    try {
+      await this.client.reactions.add({ channel: channelId, timestamp: ts, name: emoji });
+    } catch (_e) {
+      // Non-fatal — reaction may already exist or bot lacks reactions:write scope
+    }
   }
 
   async updateMessage(channelId: string, ts: string, text: string): Promise<void> {

@@ -36,7 +36,15 @@ async function main(): Promise<void> {
   const options = (q.options || []).map((o: any, i: number) => `${i + 1}. ${o.label || o}`).join('\n');
   const fullMsg = `${header}\n${options}\n\nReply with option number or text.`;
 
-  const body = JSON.stringify({ channel: channelId, text: fullMsg, mrkdwn: true });
+  let threadTs: string | undefined;
+  try {
+    const threadState = JSON.parse(require('fs').readFileSync(join(stateDir, 'slack-thread.json'), 'utf-8'));
+    if (threadState.channel === channelId && threadState.threadTs) threadTs = threadState.threadTs;
+  } catch { /* no active thread */ }
+
+  const payload: Record<string, unknown> = { channel: channelId, text: fullMsg, mrkdwn: true };
+  if (threadTs) payload.thread_ts = threadTs;
+  const body = JSON.stringify(payload);
   try {
     await fetch('https://slack.com/api/chat.postMessage', {
       method: 'POST',

@@ -1031,7 +1031,8 @@ busCommand
   .description('Send a message to a Slack channel')
   .argument('<channel-id>', 'Slack channel ID (C...)')
   .argument('<message>', 'Message text (Slack mrkdwn)')
-  .action(async (channelId: string, message: string) => {
+  .option('--thread-ts <ts>', 'Reply in a thread (parent message timestamp)')
+  .action(async (channelId: string, message: string, opts: { threadTs?: string }) => {
     message = message.replace(/\\n/g, '\n').replace(/\\t/g, '\t');
     const env = resolveEnv();
     let botToken = '';
@@ -1052,7 +1053,9 @@ busCommand
     }
 
     try {
-      const body = JSON.stringify({ channel: channelId, text: message, mrkdwn: true });
+      const payload: Record<string, unknown> = { channel: channelId, text: message, mrkdwn: true };
+      if (opts.threadTs) payload.thread_ts = opts.threadTs;
+      const body = JSON.stringify(payload);
       const res = await fetch('https://slack.com/api/chat.postMessage', {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${botToken}`, 'Content-Type': 'application/json' },
@@ -1071,7 +1074,7 @@ busCommand
         } catch { /* non-fatal */ }
       }
 
-      console.log('Message sent');
+      console.log(`Message sent${slackTs ? ` ts:${slackTs}` : ''}`);
     } catch (err: any) {
       console.error(`Failed to send: ${err.message || err}`);
       process.exit(1);
@@ -1120,6 +1123,50 @@ busCommand
       const emojis = emoji === '' ? [] : [emoji];
       await api.setMessageReaction(chatId, messageId, emojis);
       console.log(emojis.length > 0 ? `Reacted ${emoji}` : 'Reaction cleared');
+    } catch (err: any) {
+      console.error(`Failed to react: ${err.message || err}`);
+      process.exit(1);
+    }
+  });
+
+busCommand
+  .command('react')
+  .description('Add an emoji reaction to a Slack message')
+  .argument('<channel-id>', 'Slack channel ID (C...)')
+  .argument('<message-ts>', 'Timestamp of the message to react to')
+  .argument('<emoji>', 'Emoji name without colons (e.g. eyes, white_check_mark, x)')
+  .action(async (channelId: string, messageTs: string, emoji: string) => {
+    const env = resolveEnv();
+    let botToken = '';
+
+    if (env.agentDir) {
+      const agentEnv = join(env.agentDir, '.env');
+      if (existsSync(agentEnv)) {
+        const content = readFileSync(agentEnv, 'utf-8');
+        const match = content.match(/^SLACK_BOT_TOKEN=(.+)$/m);
+        if (match && match[1].trim()) botToken = match[1].trim();
+      }
+    }
+    if (!botToken) botToken = process.env.SLACK_BOT_TOKEN || '';
+
+    if (!botToken) {
+      console.error('Error: SLACK_BOT_TOKEN not configured. Set it in your agent .env file.');
+      process.exit(1);
+    }
+
+    try {
+      const body = JSON.stringify({ channel: channelId, timestamp: messageTs, name: emoji });
+      const res = await fetch('https://slack.com/api/reactions.add', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${botToken}`, 'Content-Type': 'application/json' },
+        body,
+      });
+      const data = await res.json() as any;
+      if (!data.ok && data.error !== 'already_reacted') {
+        console.error(`Slack reaction failed: ${data.error || 'unknown'}`);
+        process.exit(1);
+      }
+      console.log(`Reacted :${emoji}:`);
     } catch (err: any) {
       console.error(`Failed to react: ${err.message || err}`);
       process.exit(1);

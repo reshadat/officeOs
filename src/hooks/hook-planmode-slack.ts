@@ -55,12 +55,21 @@ async function main(): Promise<void> {
   process.on('SIGINT',  () => { cleanup(); outputDecision('deny', 'Hook terminated (SIGINT)'); });
 
   mkdirSync(stateDir, { recursive: true });
-  writeFileSync(pendingFile, JSON.stringify({ uniqueId, agentName, type: 'plan', channelId }), 'utf-8');
+  writeFileSync(pendingFile, JSON.stringify({ uniqueId, shortId: uniqueId.slice(0, 6), agentName, type: 'plan', channelId }), 'utf-8');
+
+  let threadTs: string | undefined;
+  try {
+    const threadState = JSON.parse(readFileSync(join(stateDir, 'slack-thread.json'), 'utf-8'));
+    if (threadState.channel === channelId && threadState.threadTs) threadTs = threadState.threadTs;
+  } catch { /* no active thread */ }
 
   const truncated = plan && plan.length > 800 ? '\n…(truncated)' : '';
-  const message = `[Plan] *${agentName}* has a plan:\n\`\`\`\n${planPreview}${truncated}\n\`\`\`\nReply \`allow\` to approve or \`deny\` to reject (30 min timeout → auto-approve)`;
+  const shortId = uniqueId.slice(0, 6);
+  const message = `[Plan] *${agentName}* has a plan:\n\`\`\`\n${planPreview}${truncated}\n\`\`\`\nReply \`allow ${shortId}\` to approve or \`deny ${shortId}\` to reject (30 min timeout → auto-approve)`;
 
-  const body = JSON.stringify({ channel: channelId, text: message, mrkdwn: true });
+  const payload: Record<string, unknown> = { channel: channelId, text: message, mrkdwn: true };
+  if (threadTs) payload.thread_ts = threadTs;
+  const body = JSON.stringify(payload);
   const controller = new AbortController();
   const sendTimer = setTimeout(() => controller.abort(), 10000);
   try {

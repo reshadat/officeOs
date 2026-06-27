@@ -37,8 +37,16 @@ async function main(): Promise<void> {
 
   if (!botToken || !channelId) return;
 
+  let threadTs: string | undefined;
+  try {
+    const threadState = JSON.parse(readFileSync(join(stateDir, 'slack-thread.json'), 'utf-8'));
+    if (threadState.channel === channelId && threadState.threadTs) threadTs = threadState.threadTs;
+  } catch { /* no active thread */ }
+
   const { emoji, label } = classifyEnd(stateDir);
   const message = `${emoji} *${agentName}* session ended: ${label}`;
+  const payload: Record<string, unknown> = { channel: channelId, text: message };
+  if (threadTs) payload.thread_ts = threadTs;
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 8000);
@@ -46,7 +54,7 @@ async function main(): Promise<void> {
     await fetch('https://slack.com/api/chat.postMessage', {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${botToken}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ channel: channelId, text: message }),
+      body: JSON.stringify(payload),
       signal: controller.signal,
     });
   } catch {
