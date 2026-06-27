@@ -32,8 +32,8 @@ import { listJDs } from './list-jds.js';
 const program = new Command();
 
 program
-  .name('cortextos')
-  .description('Persistent 24/7 Claude Code agents with multi-agent orchestration')
+  .name('officeos')
+  .description('Persistent AI agent teams on your own infra, run from Slack')
   .version('0.1.1');
 
 program.addCommand(initCommand);

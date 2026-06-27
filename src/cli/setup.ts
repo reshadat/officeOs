@@ -180,7 +180,7 @@ function findProjectRoot(): string {
     if (existsSync(pkg)) {
       try {
         const { name } = JSON.parse(require('fs').readFileSync(pkg, 'utf-8'));
-        if (name === 'cortextos' && existsSync(join(dir, 'dist', 'cli.js'))) return dir;
+        if ((name === 'officeos' || name === 'cortextos') && existsSync(join(dir, 'dist', 'cli.js'))) return dir;
       } catch { /* ignore */ }
     }
     const parent = join(dir, '..');

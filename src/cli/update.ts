@@ -45,10 +45,10 @@ function findFrameworkRoot(): string {
   ].filter(Boolean) as string[];
   for (const c of candidates) {
     if (existsSync(join(c, 'package.json'))) {
-      // Verify it's actually cortextos (not a random package.json).
+      // Verify it's actually the officeos repo (not a random package.json).
       try {
         const pkg = JSON.parse(require('fs').readFileSync(join(c, 'package.json'), 'utf-8'));
-        if (pkg.name === 'cortextos' || pkg.name === 'ascendops') return c;
+        if (pkg.name === 'officeos' || pkg.name === 'cortextos' || pkg.name === 'ascendops') return c;
       } catch { /* ignore */ }
     }
   }
