@@ -1,5 +1,13 @@
 # Setup
 
+The fastest path is the wizard:
+
+```bash
+officeos onboard
+```
+
+It runs everything below — dependency checks, org/team creation, Slack credentials, hook wiring, JD sync, and daemon start — interactively. This guide documents the manual steps the wizard automates, plus the Slack app setup you do once in the Slack admin UI.
+
 ## Requirements
 
 | | Install |
@@ -174,6 +182,7 @@ Security flags: `read_only`, `cap_drop: ALL`, `no-new-privileges`, `pids_limit: 
 ## CLI reference
 
 ```bash
+officeos onboard             # interactive Slack-first wizard (recommended)
 officeos install             # set up state dirs
 officeos init <org>          # create org
 officeos add-agent <name>    # add agent (--template, --org, --runtime)

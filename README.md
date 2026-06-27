@@ -165,15 +165,19 @@ One rule: **agent names must be unique across the whole office.** Two teams can'
 git clone https://github.com/reshadat/officeOs.git
 cd officeOs && npm install && npm run build && npm install -g .
 
+officeos onboard
+```
+
+`officeos onboard` is an interactive wizard. It installs dependencies, creates your teams, connects Slack, wires the hooks, syncs the JD registry, and starts the daemon. It walks you through one team at a time and lets you mark shared agents as you go.
+
+Prefer to do it by hand, or just want one agent?
+
+```bash
 officeos install
 officeos init myorg
 officeos add-agent orchestrator --template orchestrator --org myorg
 officeos add-agent analyst     --template analyst     --org myorg
-```
-
-Add Slack credentials to `orgs/myorg/agents/orchestrator/.env`, then:
-
-```bash
+# add Slack credentials to orgs/myorg/agents/orchestrator/.env, then:
 officeos ecosystem
 pm2 start ecosystem.config.js && pm2 save && pm2 startup
 ```
