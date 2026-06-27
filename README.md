@@ -192,4 +192,4 @@ No Slack? Run headless (`slack_polling: false`) and use the file bus for inter-a
 
 ---
 
-Adapted from [cortextOS](https://github.com/grandamenium/cortextos) by grandamenium. MIT license.
+MIT licensed — see [LICENSE](LICENSE).

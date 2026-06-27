@@ -1,6 +1,6 @@
-# Contributing to cortextOS
+# Contributing to officeOs
 
-Thank you for contributing a skill or agent template to the cortextOS community catalog. This guide covers everything you need to submit a contribution.
+Thank you for contributing a skill or agent template to the officeOs community catalog. This guide covers everything you need to submit a contribution.
 
 ## What Can Be Contributed
 
@@ -66,7 +66,7 @@ Short description of what this skill does.
 ### SKILL.md Guidelines
 
 - Write for the agent, not a human developer. The agent reads this at runtime.
-- Use concrete bash commands with real `cortextos bus` CLI usage, not pseudocode.
+- Use concrete bash commands with real `officeos bus` CLI usage, not pseudocode.
 - Keep each step actionable. Avoid vague instructions like "handle errors appropriately."
 - Do not include secrets, API keys, hardcoded usernames, or personal data.
 - Do not use `rm -rf`, `curl | sh`, or other destructive/untrusted patterns.
@@ -99,7 +99,7 @@ Before opening a PR, verify:
 - [ ] `triggers` array has at least 3 phrases
 - [ ] `external_calls` field is present — `[]` if the skill makes no external network calls
 - [ ] Every `curl`, `fetch`, or HTTP call in the skill body is listed in `external_calls`
-- [ ] All bash commands use `cortextos bus` CLI (not direct file manipulation)
+- [ ] All bash commands use `officeos bus` CLI (not direct file manipulation)
 - [ ] No hardcoded file paths that only work on one machine
 - [ ] No secrets, tokens, API keys, or personal data
 - [ ] No `rm -rf`, `curl | sh`, or shell injection patterns
@@ -113,8 +113,8 @@ Before opening a PR, verify:
 ### 1. Fork and clone
 
 ```bash
-git clone https://github.com/grandamenium/cortextos.git
-cd cortextos
+git clone https://github.com/reshadat/officeOs.git
+cd officeOs
 git checkout -b feat/skill-<your-skill-name>
 ```
 
@@ -186,7 +186,7 @@ Once approved, `review_status` will be set to `"approved"` and the item will app
 
 ## Agent Awareness Standard
 
-cortextOS agents discover features through their CLAUDE.md template. A feature that exists in code but isn't mentioned in the agent template is invisible — no agent will ever use it.
+officeOs agents discover features through their CLAUDE.md template. A feature that exists in code but isn't mentioned in the agent template is invisible — no agent will ever use it.
 
 **Before merging any feature PR**, verify:
 
@@ -200,4 +200,4 @@ A feature without a template update ships dark. If you're unsure whether a templ
 
 ## Questions
 
-Open a GitHub issue or message the cortextOS community channel.
+Open a GitHub issue on [reshadat/officeOs](https://github.com/reshadat/officeOs).
