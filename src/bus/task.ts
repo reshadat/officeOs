@@ -1,5 +1,6 @@
 import { existsSync, readdirSync, readFileSync, renameSync, writeFileSync, unlinkSync, appendFileSync } from 'fs';
-import { join } from 'path';
+import { join, dirname } from 'path';
+import { withFileLockSync } from '../utils/lock.js';
 import type { Task, Priority, TaskStatus, BusPaths, StaleTaskReport, ArchiveReport } from '../types/index.js';
 import { atomicWriteSync, ensureDir } from '../utils/atomic.js';
 import { randomDigits } from '../utils/random.js';
@@ -273,17 +274,21 @@ export function updateTask(
   }
   let prevStatus: TaskStatus | undefined;
   let assignee: string | undefined;
-  try {
-    const content = readFileSync(filePath, 'utf-8');
-    const task: Task = JSON.parse(content);
-    prevStatus = task.status;
-    assignee = task.assigned_to;
-    task.status = status;
-    task.updated_at = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
-    atomicWriteSync(filePath, JSON.stringify(task));
-  } catch (err) {
-    throw new Error(`Task ${taskId} update failed: ${err}`);
-  }
+  // Lock the read-modify-write so a concurrent update/complete can't lose the
+  // other's mutation between read and atomicWrite.
+  withFileLockSync(dirname(filePath), () => {
+    try {
+      const content = readFileSync(filePath, 'utf-8');
+      const task: Task = JSON.parse(content);
+      prevStatus = task.status;
+      assignee = task.assigned_to;
+      task.status = status;
+      task.updated_at = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
+      atomicWriteSync(filePath, JSON.stringify(task));
+    } catch (err) {
+      throw new Error(`Task ${taskId} update failed: ${err}`);
+    }
+  });
   appendTaskAudit(paths, taskId, { event: 'update', agent: assignee || 'unknown', from: prevStatus, to: status });
 }
 
@@ -473,22 +478,24 @@ export function completeTask(
   let prevStatus: TaskStatus | undefined;
   let assignee: string | undefined;
   let taskOrg: string = '';
-  try {
-    const content = readFileSync(filePath, 'utf-8');
-    const task: Task = JSON.parse(content);
-    prevStatus = task.status;
-    assignee = task.assigned_to;
-    taskOrg = task.org || '';
-    task.status = 'completed';
-    task.updated_at = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
-    task.completed_at = task.updated_at;
-    if (result) {
-      task.result = result;
+  withFileLockSync(dirname(filePath), () => {
+    try {
+      const content = readFileSync(filePath, 'utf-8');
+      const task: Task = JSON.parse(content);
+      prevStatus = task.status;
+      assignee = task.assigned_to;
+      taskOrg = task.org || '';
+      task.status = 'completed';
+      task.updated_at = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
+      task.completed_at = task.updated_at;
+      if (result) {
+        task.result = result;
+      }
+      atomicWriteSync(filePath, JSON.stringify(task));
+    } catch (err) {
+      throw new Error(`Task ${taskId} complete failed: ${err}`);
     }
-    atomicWriteSync(filePath, JSON.stringify(task));
-  } catch (err) {
-    throw new Error(`Task ${taskId} complete failed: ${err}`);
-  }
+  });
   appendTaskAudit(paths, taskId, { event: 'complete', agent: assignee || 'unknown', from: prevStatus, to: 'completed', note: result });
 
   // Activity-feed event. Best-effort — the task is already persisted.

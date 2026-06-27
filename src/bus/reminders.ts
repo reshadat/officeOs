@@ -12,7 +12,9 @@
  *   3. Agent processes the reminder, calls `officeos bus ack-reminder <id>`
  */
 
-import { existsSync, readFileSync, writeFileSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
+import { atomicWriteSync } from '../utils/atomic.js';
+import { withFileLockSync } from '../utils/lock.js';
 import { join } from 'path';
 import { randomBytes } from 'crypto';
 import { ensureDir } from '../utils/atomic.js';
@@ -45,7 +47,14 @@ function readReminders(paths: BusPaths): Reminder[] {
 
 function writeReminders(paths: BusPaths, reminders: Reminder[]): void {
   ensureDir(paths.stateDir);
-  writeFileSync(remindersPath(paths), JSON.stringify(reminders, null, 2) + '\n', 'utf-8');
+  atomicWriteSync(remindersPath(paths), JSON.stringify(reminders, null, 2) + '\n');
+}
+
+/** Run a read-modify-write of the single reminders file under the state lock so
+ *  concurrent create/ack/prune can't lose each other's mutation. */
+function withReminderLock<T>(paths: BusPaths, fn: () => T): T {
+  ensureDir(paths.stateDir);
+  return withFileLockSync(paths.stateDir, fn);
 }
 
 /**
@@ -69,9 +78,11 @@ export function createReminder(paths: BusPaths, fireAt: string, prompt: string):
     status: 'pending',
   };
 
-  const reminders = readReminders(paths);
-  reminders.push(reminder);
-  writeReminders(paths, reminders);
+  withReminderLock(paths, () => {
+    const reminders = readReminders(paths);
+    reminders.push(reminder);
+    writeReminders(paths, reminders);
+  });
   return reminder;
 }
 
@@ -99,17 +110,19 @@ export function getOverdueReminders(paths: BusPaths): Reminder[] {
  * Acknowledge a reminder by ID — marks it as handled.
  */
 export function ackReminder(paths: BusPaths, id: string): void {
-  const reminders = readReminders(paths);
-  const idx = reminders.findIndex(r => r.id === id);
-  if (idx === -1) {
-    throw new Error(`Reminder ${id} not found`);
-  }
-  reminders[idx] = {
-    ...reminders[idx],
-    status: 'acked',
-    acked_at: new Date().toISOString(),
-  };
-  writeReminders(paths, reminders);
+  withReminderLock(paths, () => {
+    const reminders = readReminders(paths);
+    const idx = reminders.findIndex(r => r.id === id);
+    if (idx === -1) {
+      throw new Error(`Reminder ${id} not found`);
+    }
+    reminders[idx] = {
+      ...reminders[idx],
+      status: 'acked',
+      acked_at: new Date().toISOString(),
+    };
+    writeReminders(paths, reminders);
+  });
 }
 
 /**
@@ -118,13 +131,15 @@ export function ackReminder(paths: BusPaths, id: string): void {
  */
 export function pruneReminders(paths: BusPaths, retainDays: number = 7): number {
   const cutoff = Date.now() - retainDays * 24 * 60 * 60 * 1000;
-  const reminders = readReminders(paths);
-  const kept = reminders.filter(r => {
-    if (r.status !== 'acked') return true;
-    const ackedAt = r.acked_at ? Date.parse(r.acked_at) : 0;
-    return ackedAt > cutoff;
+  return withReminderLock(paths, () => {
+    const reminders = readReminders(paths);
+    const kept = reminders.filter(r => {
+      if (r.status !== 'acked') return true;
+      const ackedAt = r.acked_at ? Date.parse(r.acked_at) : 0;
+      return ackedAt > cutoff;
+    });
+    const pruned = reminders.length - kept.length;
+    if (pruned > 0) writeReminders(paths, kept);
+    return pruned;
   });
-  const pruned = reminders.length - kept.length;
-  if (pruned > 0) writeReminders(paths, kept);
-  return pruned;
 }
