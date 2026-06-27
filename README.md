@@ -208,6 +208,11 @@ officeos dashboard           # Start web dashboard (--port 3000)
 officeos bus send-slack <channel-id> '<message>'
 ```
 
+| Command | Description |
+|---|---|
+| `officeos sync-jds` | Sync all agent JD blocks → jds-registry.md + collaborator files |
+| `officeos list-jds` | List all agents and their job descriptions |
+
 `cortextos` is a legacy alias — existing scripts continue to work.
 
 ---
@@ -232,6 +237,51 @@ officeos bus send-slack <channel-id> '<message>'
 | `analyst` | System health, metrics, autoresearch |
 | `agent` | General-purpose worker |
 | `agent-codex` | Codex-runtime worker (`runtime: codex-app-server`) |
+
+---
+
+## Routing Protocol
+
+The orchestrator routes queries to specialist agents via bus message prefixes:
+
+| Message | Direction | Meaning |
+|---------|-----------|---------|
+| `ROUTED_QUERY: <msg>` | Orch → Agent | Handle this query |
+| `ROUTE_REPLY: <answer>` | Agent → Orch | Answer to relay to human |
+| `ROUTE_ESCALATE: <reason> | ORIGINAL: <msg>` | Agent → Orch | Cannot handle, re-route |
+| `ASK_HUMAN: <question>` | Agent → Orch | Need human input |
+
+Bus messages carry a structured envelope (daemon-level): request_id for correlation,
+origin_channel for reply routing, hop_count for loop detection (drops at 10).
+Agents see only the plain message text — envelope metadata is invisible to them.
+
+---
+
+## Agent Job Descriptions
+
+Each agent declares what it does in `config.json` under the `jd` field:
+
+```json
+{
+  "jd": {
+    "title": "Documentation Specialist",
+    "description": "Finds and explains internal documentation",
+    "responsibilities": ["Answer questions about internal docs", "Summarize runbooks"],
+    "provides": ["Documentation search", "URL summarization"],
+    "needs": ["Codebase context"],
+    "keywords": ["docs", "wiki", "runbook", "how-to"],
+    "out_of_scope": ["Code changes", "Deployments"]
+  }
+}
+```
+
+After filling in JD blocks, run:
+```bash
+officeos sync-jds
+```
+This writes a `jds-registry.md` to the orchestrator's dir and `memory/collaborators.md` to matched agents.
+
+The orchestrator reads the registry and routes queries based on semantic intent matching — not keyword lookup. "How does the Snyk parser work?" routes to `codebase-agent` because its responsibility is "Describe internal code behavior", even though "Snyk" isn't in the keywords.
 
 ---
 
