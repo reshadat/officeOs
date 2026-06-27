@@ -192,4 +192,36 @@ describe('channel message loop', () => {
     expect(got[0].request_id).toBe('r1');
     expect(got[0].origin_channel).toBe('C_A');
   });
+
+  // ── SERIALIZATION: two humans never share one model turn ────────────────────
+  const slackFmt = (ch: string, txt: string) =>
+    `=== SLACK from [USER: U] [OWNER] (channel:${ch}) [ts:1] [thread:1] [req:r] ===\n${txt}\nReply: x\n\n`;
+
+  it('serialization: two channels inject ONE conversation per turn (no merge)', async () => {
+    const agent = mockAgent();
+    const checker = new FastChecker(agent, makePaths(ctxRoot, 'orch'), join(ctxRoot, 'fw'));
+    checker.queueSlackMessage(slackFmt('C_A', 'from Alice'));
+    checker.queueSlackMessage(slackFmt('C_B', 'from Bob'));
+
+    await (checker as any).pollCycle();
+    expect(agent.injectMessage).toHaveBeenCalledTimes(1);
+    const turn1 = agent.injectMessage.mock.calls[0][0];
+    expect(turn1).toContain('from Alice');
+    expect(turn1).not.toContain('from Bob'); // Bob is NOT in Alice's turn
+
+    await (checker as any).pollCycle();
+    expect(agent.injectMessage.mock.calls[1][0]).toContain('from Bob');
+  }, 20000);
+
+  it('drain-on-failure: a failed inject does not drop the message', async () => {
+    const agent = mockAgent();
+    agent.injectMessage.mockReturnValueOnce(false); // first inject fails (e.g. session refresh)
+    const checker = new FastChecker(agent, makePaths(ctxRoot, 'orch'), join(ctxRoot, 'fw'));
+    checker.queueSlackMessage(slackFmt('C1', 'do not lose me'));
+
+    await (checker as any).pollCycle(); // fails — must NOT drop
+    await (checker as any).pollCycle(); // retried — succeeds
+    expect(agent.injectMessage).toHaveBeenCalledTimes(2);
+    expect(agent.injectMessage.mock.calls[1][0]).toContain('do not lose me');
+  }, 20000);
 });

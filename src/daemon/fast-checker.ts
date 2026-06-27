@@ -201,52 +201,65 @@ export class FastChecker {
   private async pollCycle(): Promise<void> {
     let messageBlock = '';
     const ackIds: string[] = [];
-
-    // Process queued Telegram messages
     let hasTelegramMessage = false;
-    while (this.telegramMessages.length > 0) {
-      const msg = this.telegramMessages.shift()!;
-      messageBlock += msg.formatted;
-      hasTelegramMessage = true;
-    }
 
-    // Process queued Slack messages
-    while (this.slackMessages.length > 0) {
-      const msg = this.slackMessages.shift()!;
-      // Loop-guard: drop messages that have been routed too many times
+    // Drop loop-guarded Slack messages up front (they don't belong to any turn).
+    this.slackMessages = this.slackMessages.filter((msg) => {
       if (msg.envelope?.hop_count !== undefined && msg.envelope.hop_count >= 10) {
         this.log(`[loop-guard] Dropping Slack message with hop_count=${msg.envelope.hop_count} (request_id=${msg.envelope.request_id ?? 'n/a'}, channel=${msg.envelope.origin_channel ?? 'n/a'})`);
-        continue;
+        return false;
       }
-      messageBlock += msg.formatted;
-      hasTelegramMessage = true; // treat same as Telegram for typing indicator logic
+      return true;
+    });
+
+    // PER-CONVERSATION SERIALIZATION: inject at most ONE human conversation per
+    // turn so two people's messages never merge into a single model turn.
+    // DRAIN-ON-SUCCESS: peek the batch; only remove it from the queue after a
+    // successful inject, so a failed inject (session refresh / crash) requeues
+    // it instead of silently dropping a user's message.
+    let drainHuman: (() => void) | null = null;
+
+    if (this.telegramMessages.length > 0) {
+      // Telegram = one chat per agent → already a single conversation.
+      const n = this.telegramMessages.length;
+      for (const msg of this.telegramMessages) messageBlock += msg.formatted;
+      hasTelegramMessage = true;
+      drainHuman = () => this.telegramMessages.splice(0, n);
+    } else if (this.slackMessages.length > 0) {
+      // Pick the conversation (origin channel) of the oldest queued message and
+      // drain only that one; other conversations wait for the next cycle.
+      const targetConv = this.slackMessages[0].envelope?.origin_channel ?? '__unknown__';
+      for (const msg of this.slackMessages) {
+        if ((msg.envelope?.origin_channel ?? '__unknown__') === targetConv) messageBlock += msg.formatted;
+      }
+      hasTelegramMessage = true; // typing-indicator parity
+      drainHuman = () => {
+        this.slackMessages = this.slackMessages.filter(
+          (msg) => (msg.envelope?.origin_channel ?? '__unknown__') !== targetConv,
+        );
+      };
     }
 
-    // Check agent inbox
+    // Agent inbox (agent-to-agent / routing — the agent's own work items).
     const inboxMessages = checkInbox(this.paths);
     for (const msg of inboxMessages) {
       messageBlock += this.formatInboxMessage(msg);
       ackIds.push(msg.id);
     }
 
-    // Inject if there's anything
     if (messageBlock) {
       const injected = this.agent.injectMessage(messageBlock);
       if (injected) {
-        // ACK inbox messages
-        for (const id of ackIds) {
-          ackInbox(this.paths, id);
-        }
+        drainHuman?.();                 // remove the human batch only on success
+        for (const id of ackIds) ackInbox(this.paths, id);
         this.log(`Injected ${messageBlock.length} bytes`);
-        // Only update typing timestamp for Telegram messages, not inbox/cron.
-        // Inbox messages (agent-to-agent, session continuations) must not
-        // restart the typing indicator after Stop has cleared it.
         if (hasTelegramMessage) {
           this.lastMessageInjectedAt = Date.now();
         }
-        // Cooldown after injection
         await sleep(5000);
       }
+      // On failure: nothing drained, inbox not acked (recovered from inflight)
+      // → everything is retried on the next cycle. No silent loss.
     }
 
     // Typing indicator: send while Claude is actively working
