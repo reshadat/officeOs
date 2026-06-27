@@ -12,7 +12,7 @@ import { SlackAPI } from '../../slack/api.js';
 import { SlackSocketClient } from '../../slack/socket-client.js';
 import { stripControlChars, sanitizeForPtyInjection, wrapFenceSafe } from '../../utils/validate.js';
 import { stripBom } from '../../utils/strip-bom.js';
-import { recordTarget, getTarget, mostRecentTarget, getRequestIdForThread } from '../reply-targets.js';
+import { recordTarget, getTarget, mostRecentTarget, getRequestIdForThread, clearThread } from '../reply-targets.js';
 import { newRequestId } from '../ids.js';
 import type {
   ChannelAdapter,
@@ -38,6 +38,8 @@ export interface SlackInboundConfig {
 // Match "allow", "allow a1b2c3" (ID-targeted), bare "allow" (legacy single-agent).
 const ALLOW_RE = /^allow(?:\s+([a-f0-9]+))?$/i;
 const DENY_RE = /^deny(?:\s+([a-f0-9]+))?$/i;
+// "Stop" in an engaged thread disengages the bot from that thread.
+const STOP_RE = /^(stop|pause|stop it|that'?s all|that is all|never ?mind|nvm|we're done|were done|done here)\b/i;
 
 // Per-user sliding-window rate limiter. READONLY users only; owner exempt.
 class RateLimiter {
@@ -155,6 +157,9 @@ export class SlackAdapter implements ChannelAdapter {
     } catch { /* corrupt — ignore */ }
     const api = this.api;
     const botToken = this.botToken;
+    // Bot's own user id — for "only respond when @-mentioned" in channels.
+    let botUserId = '';
+    try { botUserId = (await api.getBotUserId()) || ''; } catch { /* mention gate degrades open */ }
     const domainCache = new Map<string, boolean>();
     const rateLimiter = new RateLimiter(cfg.rateLimitSpec || '10/60');
     const loggedUnknown = new Set<string>(); // throttle unknown-user logs in busy channels
@@ -197,6 +202,23 @@ export class SlackAdapter implements ChannelAdapter {
       if (!(await checkDomain(botToken, userId, cfg.allowedDomains, domainCache, log))) return;
 
       const text = (event.text || '').trim();
+
+      // Gate 3.5: channel engagement. Treat a channel like a room you only speak
+      // in when addressed; a DM like a 1:1 with a colleague.
+      //   - DM            → always engage.
+      //   - Channel       → engage only if @-mentioned OR already in this thread.
+      //   - Engaged thread + "stop" → disengage; ignore further messages until
+      //     the bot is @-mentioned again.
+      if (!isDM) {
+        const mentionsBot = !!botUserId && text.includes(`<@${botUserId}>`);
+        const engaged = !!event.thread_ts && getRequestIdForThread(cfg.stateDir, event.channel, event.thread_ts) !== null;
+        if (engaged && STOP_RE.test(text.replace(/<@[^>]+>/g, '').trim())) {
+          clearThread(cfg.stateDir, event.channel, event.thread_ts!);
+          log(`Slack: disengaged thread ${event.thread_ts} in ${event.channel} ("stop")`);
+          return;
+        }
+        if (!mentionsBot && !engaged) return; // not addressed, not in an active thread
+      }
 
       // Gate 4: rate limit — READONLY only
       if (isReadonly && !rateLimiter.check(userId)) {

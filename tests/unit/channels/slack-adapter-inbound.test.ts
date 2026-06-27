@@ -60,7 +60,14 @@ function handlers(): { h: any; c: Captured } {
   };
 }
 
+// Default to a DM (1:1, always engaged) so the core-processing tests aren't
+// subject to the channel "@-mention to engage" gate. Channel-gate tests pass
+// channel_type:'channel' explicitly.
 async function fire(event: Partial<any>) {
+  await messageHandler!({ type: 'message', channel: 'D1', channel_type: 'im', ts: '1700.1', ...event });
+}
+/** Fire a CHANNEL message (engagement gate applies). */
+async function fireChannel(event: Partial<any>) {
   await messageHandler!({ type: 'message', channel: 'CALLOWED', channel_type: 'channel', ts: '1700.1', ...event });
 }
 
@@ -101,7 +108,7 @@ describe('SlackAdapter inbound gates', () => {
   it('drops non-DM messages outside the channel allowlist (gate 2)', async () => {
     const { h, c } = handlers();
     await new SlackAdapter('xoxb', makeConfig({}, dir)).start(h);
-    await fire({ user: 'UOWNER', text: 'hi', channel: 'COTHER' });
+    await fireChannel({ user: 'UOWNER', text: 'hi', channel: 'COTHER' });
     expect(c.messages).toHaveLength(0);
   });
 
@@ -206,7 +213,7 @@ describe('SlackAdapter inbound gates', () => {
     const { h, c } = handlers();
     await new SlackAdapter('xoxb', makeConfig({}, dir)).start(h);
     await fire({ user: 'UOWNER', text: 'follow up', ts: '1700.2', thread_ts: '1699.0' });
-    expect(getThreadReplies).toHaveBeenCalledWith('CALLOWED', '1699.0');
+    expect(getThreadReplies).toHaveBeenCalledWith('D1', '1699.0');
     const inj = c.messages[0].injection;
     expect(inj).toContain('[Thread context]');
     expect(inj).toContain('first question');
@@ -250,8 +257,8 @@ describe('SlackAdapter auto-eject (member_joined_channel)', () => {
     await new SlackAdapter('xoxb', cfg).start(h);
     await eventHandlers['member_joined_channel']!({ user: 'UBOT', inviter: 'UOWNER', channel: 'CNEW' });
     expect(leaveChannel).not.toHaveBeenCalled();
-    // proof: a non-DM message in the newly-allowed channel now passes gate 2
-    await fire({ user: 'UOWNER', text: 'hi', channel: 'CNEW' });
+    // proof: an @-mention in the newly-allowed channel now passes gate 2 + engagement
+    await fireChannel({ user: 'UOWNER', text: '<@UBOT> hi', channel: 'CNEW' });
     expect(c.messages).toHaveLength(1);
   });
 
@@ -260,5 +267,46 @@ describe('SlackAdapter auto-eject (member_joined_channel)', () => {
     await new SlackAdapter('xoxb', makeConfig({}, dir)).start(h);
     await eventHandlers['member_joined_channel']!({ user: 'USOMEONE', inviter: 'USTRANGER', channel: 'CNEW' });
     expect(leaveChannel).not.toHaveBeenCalled();
+  });
+
+  // ── Engagement: channel = speak when addressed; DM = always; thread = sticky ──
+  describe('channel engagement gate', () => {
+    it('ignores a channel message that does not @-mention the bot', async () => {
+      const { h, c } = handlers();
+      await new SlackAdapter('xoxb', makeConfig({}, dir)).start(h);
+      await fireChannel({ user: 'UOWNER', text: 'random chatter, not for the bot' });
+      expect(c.messages).toHaveLength(0);
+    });
+
+    it('engages when @-mentioned in a channel', async () => {
+      const { h, c } = handlers();
+      await new SlackAdapter('xoxb', makeConfig({}, dir)).start(h);
+      await fireChannel({ user: 'UOWNER', text: '<@UBOT> hello', ts: '1700.1' });
+      expect(c.messages).toHaveLength(1);
+    });
+
+    it('stays engaged for every message in a thread it is already in (no re-mention)', async () => {
+      const { h, c } = handlers();
+      await new SlackAdapter('xoxb', makeConfig({}, dir)).start(h);
+      await fireChannel({ user: 'UOWNER', text: '<@UBOT> start', ts: '1700.1' });
+      await fireChannel({ user: 'UOWNER', text: 'follow up, no mention', ts: '1700.2', thread_ts: '1700.1' });
+      expect(c.messages).toHaveLength(2);
+    });
+
+    it('disengages a thread on "stop" and ignores later messages until re-mentioned', async () => {
+      const { h, c } = handlers();
+      await new SlackAdapter('xoxb', makeConfig({}, dir)).start(h);
+      await fireChannel({ user: 'UOWNER', text: '<@UBOT> start', ts: '1700.1' });
+      await fireChannel({ user: 'UOWNER', text: 'stop', ts: '1700.2', thread_ts: '1700.1' });
+      await fireChannel({ user: 'UOWNER', text: 'are you there?', ts: '1700.3', thread_ts: '1700.1' });
+      expect(c.messages).toHaveLength(1); // only the opening mention was processed
+    });
+
+    it('a DM is always engaged — no mention needed', async () => {
+      const { h, c } = handlers();
+      await new SlackAdapter('xoxb', makeConfig({}, dir)).start(h);
+      await fire({ user: 'UOWNER', text: 'just chatting, like a colleague' });
+      expect(c.messages).toHaveLength(1);
+    });
   });
 });
