@@ -240,6 +240,9 @@ export interface AgentJD {
   needs: string[];
   keywords: string[];
   out_of_scope?: string[];
+  // When true, this agent appears in every org's registry — usable across teams.
+  // When false/absent, the agent is only visible to its own org's orchestrator.
+  shared?: boolean;
 }
 
 export interface CronEntry {
