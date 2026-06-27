@@ -21,7 +21,7 @@ import { existsSync, writeFileSync, readFileSync, chmodSync } from 'fs';
 import { join } from 'path';
 import { homedir } from 'os';
 import { spawnSync } from 'child_process';
-import { SlackAPI } from '../slack/api.js';
+import { resolveAdapter } from '../channels/registry.js';
 import { validateAgentName, validateOrgName } from '../utils/validate.js';
 
 // ─── Prompt helpers ─────────────────────────────────────────────────────────
@@ -87,7 +87,9 @@ async function askValidName(
 
 function runCli(cwd: string, args: string[], label: string): boolean {
   const cliPath = join(cwd, 'dist', 'cli.js');
-  const result = spawnSync(process.execPath, [cliPath, ...args], { cwd, stdio: 'inherit', env: process.env });
+  // stdin is 'ignore' so a sub-CLI never drains the wizard's own stdin (the
+  // readline answer stream). Sub-commands are non-interactive.
+  const result = spawnSync(process.execPath, [cliPath, ...args], { cwd, stdio: ['ignore', 'inherit', 'inherit'], env: process.env });
   if (result.status !== 0) {
     console.error(`\n  Error during: ${label}`);
     return false;
@@ -119,7 +121,7 @@ function findProjectRoot(): string {
 
 // ─── Slack ──────────────────────────────────────────────────────────────────
 
-interface SlackCreds {
+export interface SlackCreds {
   botToken: string;
   appToken: string;
   userId: string;
@@ -132,20 +134,20 @@ interface SlackCreds {
  * user id on success (so we can warn if the owner accidentally used it as
  * SLACK_USER_ID), or null on failure. Network errors warn-and-continue.
  */
-async function validateBotToken(botToken: string): Promise<{ ok: boolean; botUserId: string | null }> {
-  try {
-    const api = new SlackAPI(botToken);
-    const botUserId = await api.getBotUserId();
-    if (botUserId) {
-      console.log(`  Validated bot token — bot user id ${botUserId}`);
-      return { ok: true, botUserId };
-    }
-    console.log('  Warning: auth.test returned no user id. Token may be invalid.');
-    return { ok: false, botUserId: null };
-  } catch (err) {
-    console.log(`  Warning: could not reach Slack (${err instanceof Error ? err.message : String(err)}). Writing .env unvalidated.`);
-    return { ok: true, botUserId: null };
+export async function validateBotToken(botToken: string): Promise<{ ok: boolean; botUserId: string | null }> {
+  // Routes through the channel adapter — Slack by default, MockAdapter when
+  // OFFICEOS_CHANNEL_ADAPTER=mock (the black-box E2E path).
+  const adapter = resolveAdapter('slack', { botToken });
+  const res = await adapter.validateCredentials();
+  if (res.ok) {
+    const id = res.identity ?? null;
+    if (id) console.log(`  Validated bot token — bot identity ${id}`);
+    else console.log('  Bot token accepted (no identity returned).');
+    return { ok: true, botUserId: id };
   }
+  console.log(`  Warning: could not validate bot token (${res.error ?? 'unknown'}). Writing .env unvalidated.`);
+  // Non-fatal — a network blip shouldn't block setup; daemon preflight re-checks.
+  return { ok: true, botUserId: null };
 }
 
 async function collectSlackCreds(
@@ -209,7 +211,7 @@ async function collectSlackCreds(
   return { botToken, appToken, userId, channelId, allowedDomains };
 }
 
-function writeSlackEnv(agentDir: string, c: SlackCreds): void {
+export function writeSlackEnv(agentDir: string, c: SlackCreds): void {
   const lines = [
     `SLACK_BOT_TOKEN=${c.botToken}`,
     `SLACK_APP_TOKEN=${c.appToken}`,
@@ -228,7 +230,7 @@ function writeSlackEnv(agentDir: string, c: SlackCreds): void {
  * — only the channel-specific commands change — so it stays correct for this
  * runtime's hook contract. Preserves the permissions block untouched.
  */
-function wireSlackHooks(agentDir: string, projectRoot: string): boolean {
+export function wireSlackHooks(agentDir: string, projectRoot: string): boolean {
   const settingsPath = join(agentDir, '.claude', 'settings.json');
   if (!existsSync(settingsPath)) {
     console.log(`  Warning: no settings.json at ${settingsPath} — skipping hook wiring.`);
@@ -265,7 +267,7 @@ function wireSlackHooks(agentDir: string, projectRoot: string): boolean {
 }
 
 /** Patch the empty jd placeholder in an agent's config.json. */
-function patchJD(agentDir: string, title: string, description: string, shared: boolean): void {
+export function patchJD(agentDir: string, title: string, description: string, shared: boolean): void {
   const configPath = join(agentDir, 'config.json');
   if (!existsSync(configPath)) return;
   let config: any;
@@ -292,9 +294,16 @@ function patchJD(agentDir: string, title: string, description: string, shared: b
 
 export const onboardCommand = new Command('onboard')
   .option('--instance <id>', 'Instance ID', 'default')
+  .option('--skip-install', 'Skip the dependency-install step (tests)')
+  .option('--no-start', 'Skip starting the daemon (tests)')
+  .option('--skip-enable', 'Skip enabling agents in the daemon (tests)')
   .description('Interactive Slack-first setup — build teams, connect Slack, wire hooks, start the daemon')
-  .action(async (options: { instance: string }) => {
+  .action(async (options: { instance: string; skipInstall?: boolean; start?: boolean; skipEnable?: boolean }) => {
     const instanceId = options.instance;
+    // Test seams — flags OR env so a spawned wizard can be driven non-destructively.
+    const skipInstall = options.skipInstall || process.env.OFFICEOS_ONBOARD_SKIP_INSTALL === '1';
+    const noStart = options.start === false || process.env.OFFICEOS_ONBOARD_NO_START === '1';
+    const skipEnable = options.skipEnable || process.env.OFFICEOS_ONBOARD_SKIP_ENABLE === '1';
     const projectRoot = findProjectRoot();
     const ctxRoot = join(homedir(), '.cortextos', instanceId);
     const iface = rl();
@@ -310,7 +319,9 @@ export const onboardCommand = new Command('onboard')
 
     // ─── Step 1: install ──────────────────────────────────────────────────────
     console.log('  Step 1: Checking dependencies and creating state directories...\n');
-    if (!runCli(projectRoot, ['install', '--instance', instanceId], 'officeos install')) {
+    if (skipInstall) {
+      console.log('  Skipping install (--skip-install).\n');
+    } else if (!runCli(projectRoot, ['install', '--instance', instanceId], 'officeos install')) {
       console.error('\n  Install failed. Fix the errors above and re-run officeos onboard.');
       iface.close();
       process.exit(1);
@@ -358,7 +369,7 @@ export const onboardCommand = new Command('onboard')
       console.log(`  Wrote Slack .env for ${orchName}`);
       wireSlackHooks(orchDir, projectRoot);
       patchJD(orchDir, `${org} orchestrator`, `Routes ${org} team requests to the right specialist.`, false);
-      runCli(projectRoot, ['enable', orchName, '--org', org, '--instance', instanceId], `enable ${orchName}`);
+      if (!skipEnable) runCli(projectRoot, ['enable', orchName, '--org', org, '--instance', instanceId], `enable ${orchName}`);
       allAgentNames.push(orchName);
 
       // Specialists
@@ -379,7 +390,7 @@ export const onboardCommand = new Command('onboard')
         }
         const dir = join(projectRoot, 'orgs', org, 'agents', name);
         patchJD(dir, title, description, shared);
-        runCli(projectRoot, ['enable', name, '--org', org, '--instance', instanceId], `enable ${name}`);
+        if (!skipEnable) runCli(projectRoot, ['enable', name, '--org', org, '--instance', instanceId], `enable ${name}`);
         specialists.push(name);
         allAgentNames.push(name);
         console.log(`  Added ${name}${shared ? ' (shared)' : ''}.`);
@@ -397,21 +408,25 @@ export const onboardCommand = new Command('onboard')
 
     // ─── Step 4: ecosystem + start ────────────────────────────────────────────
     console.log('\n  ─────────────────────────────────────\n');
-    console.log('  Step 4: Generating ecosystem config and starting the daemon...\n');
-    const firstOrg = teams[0]?.org ?? '';
-    const ecoEnv = { ...process.env, CTX_INSTANCE_ID: instanceId, CTX_ORG: firstOrg };
-    const eco = spawnSync(process.execPath, [join(projectRoot, 'dist', 'cli.js'), 'ecosystem', '--instance', instanceId], {
-      cwd: projectRoot, stdio: 'inherit', env: ecoEnv,
-    });
-    if (eco.status !== 0) {
-      console.error('  Failed to generate ecosystem config. Run manually: officeos ecosystem');
+    if (noStart) {
+      console.log('  Step 4: Skipping daemon start (--no-start).\n');
     } else {
-      const pm2 = spawnSync('pm2', ['start', 'ecosystem.config.js'], { cwd: projectRoot, stdio: 'inherit' });
-      if (pm2.status === 0) {
-        spawnSync('pm2', ['save'], { cwd: projectRoot, stdio: 'inherit' });
-        console.log('\n  Daemon started via PM2.');
+      console.log('  Step 4: Generating ecosystem config and starting the daemon...\n');
+      const firstOrg = teams[0]?.org ?? '';
+      const ecoEnv = { ...process.env, CTX_INSTANCE_ID: instanceId, CTX_ORG: firstOrg };
+      const eco = spawnSync(process.execPath, [join(projectRoot, 'dist', 'cli.js'), 'ecosystem', '--instance', instanceId], {
+        cwd: projectRoot, stdio: 'inherit', env: ecoEnv,
+      });
+      if (eco.status !== 0) {
+        console.error('  Failed to generate ecosystem config. Run manually: officeos ecosystem');
       } else {
-        runCli(projectRoot, ['start', '--instance', instanceId], 'officeos start');
+        const pm2 = spawnSync('pm2', ['start', 'ecosystem.config.js'], { cwd: projectRoot, stdio: 'inherit' });
+        if (pm2.status === 0) {
+          spawnSync('pm2', ['save'], { cwd: projectRoot, stdio: 'inherit' });
+          console.log('\n  Daemon started via PM2.');
+        } else {
+          runCli(projectRoot, ['start', '--instance', instanceId], 'officeos start');
+        }
       }
     }
 

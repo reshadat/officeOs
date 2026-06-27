@@ -18,7 +18,10 @@ export class SlackAPI {
   private botUserIdCache: string | null = null;
 
   constructor(botToken: string) {
-    this.client = new WebClient(botToken);
+    // SLACK_API_URL lets tests point at a local mock server and lets the live
+    // wizard be debugged against a proxy. Falls through to the real API.
+    const slackApiUrl = process.env.SLACK_API_URL;
+    this.client = new WebClient(botToken, slackApiUrl ? { slackApiUrl } : undefined);
   }
 
   async sendMessage(channelId: string, text: string, threadTs?: string): Promise<{ ts: string; channel: string } | null> {
