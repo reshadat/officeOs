@@ -1,7 +1,7 @@
 <h1 align="center">officeOs</h1>
 
 <p align="center">
-  <em>Slack as the control plane. Claude Code agents running 24/7.</em>
+  <em>Your team that never sleeps. Controlled from Slack.</em>
 </p>
 
 <p align="center">
@@ -14,17 +14,37 @@
 
 ---
 
----
+You have twenty things running overnight. You know exactly which one will fail. You'll wake up at 3am, check Slack, stay up two hours fixing it, and be useless in the morning standup.
+
+Or you run officeOs.
+
+A persistent team of AI agents on your infra. They watch. They act. When something needs a human call — a deploy approval, a judgment call, a thing only you can say yes to — they message you in Slack. You type `allow`. You go back to sleep.
 
 ```
-You:      Morning. What shipped overnight?
-Boss:     4 tasks done, 2 experiments ran, 3 scripts drafted.
-          One item needs your approval.
-You:      allow
-Boss:     Approved. Running now.
-You:      Add a cron to check my inbox every morning at 8am.
-Boss:     Done. "morning-inbox" cron set — runs daily at 08:00.
+Boss:   Migration finished at 02:14. One step needs your sign-off.
+        Triggered by: automated pipeline
+        Request ID: a1b2c3
+        Reply: allow a1b2c3 / deny a1b2c3
+
+You:    allow a1b2c3
+
+Boss:   ✅ Done. Back to sleep.
 ```
+
+Or, morning:
+
+```
+You:    What shipped overnight?
+
+Boss:   4 tasks done, 2 experiments ran, 3 scripts drafted.
+        One item still pending your review.
+
+You:    allow
+
+Boss:   Approved. Running now.
+```
+
+You own the infra. You own the keys. Agents run on your machine, route through your Slack, and can only touch what you explicitly mount.
 
 ---
 
