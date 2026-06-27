@@ -4,6 +4,7 @@ import { join } from 'path';
 import { homedir } from 'os';
 import { IPCClient } from '../daemon/ipc-server.js';
 import { TelegramAPI, formatValidateError } from '../telegram/api.js';
+import { resolveAdapter } from '../channels/registry.js';
 
 /**
  * BUG-035 fix: discover the officeOs framework root without depending on
@@ -175,49 +176,74 @@ export const enableAgentCommand = new Command('enable')
     }
 
     const env = parseEnvFile(agentEnvPath);
-    const missing = (['BOT_TOKEN', 'CHAT_ID'] as const).filter(k => !env[k]);
-    if (missing.length > 0) {
-      console.error(`Error: .env for agent "${agent}" is missing required values: ${missing.join(', ')}`);
-      console.error(`Edit ${agentEnvPath} and set BOT_TOKEN and CHAT_ID before enabling.`);
+
+    // Adapter-aware preflight: validate whichever channel this agent is wired
+    // for. A Slack-facing orchestrator has SLACK_* creds; a Telegram agent has
+    // BOT_TOKEN/CHAT_ID. Hard-coding Telegram broke Slack-only onboarding.
+    const kind: 'slack' | 'telegram' | null =
+      env.SLACK_BOT_TOKEN ? 'slack' : (env.BOT_TOKEN || env.CHAT_ID) ? 'telegram' : null;
+
+    if (!kind) {
+      console.error(`Error: .env for agent "${agent}" has no channel configured.`);
+      console.error(`Set Slack (SLACK_BOT_TOKEN, SLACK_APP_TOKEN, SLACK_CHANNEL_ID) or Telegram (BOT_TOKEN, CHAT_ID) in ${agentEnvPath}.`);
       process.exit(1);
     }
 
-    // self-chat trap preflight: validate BOT_TOKEN + CHAT_ID against the live
-    // Telegram API before registering. Catches bad tokens, unreachable chats,
-    // bot-recipient configs, and the self_chat trap (CHAT_ID == bot's own
-    // user id) BEFORE the agent boots up on a silently broken config. Without
-    // this, the first real sendMessage call fails with a cryptic 401/400/403
-    // buried in the agent's stdout log, and the dashboard happily shows the
-    // agent as alive.
-    //
-    // Hard-fails on config-level reasons (bad_token, chat_not_found,
-    // bot_recipient, self_chat). Warns but does not block on transient
-    // reasons (network_error, rate_limited) so offline enable and burst
-    // enables during the morning cascade still succeed.
-    try {
-      const telegramApi = new TelegramAPI(env.BOT_TOKEN);
-      const validation = await telegramApi.validateCredentials(env.CHAT_ID);
-      if (validation.ok) {
-        const label = validation.chatTitle ? ` (${validation.chatTitle})` : '';
-        console.log(
-          `Telegram validated: bot=@${validation.botUsername} chat=${env.CHAT_ID} type=${validation.chatType}${label}`,
-        );
-      } else if (validation.reason === 'network_error' || validation.reason === 'rate_limited') {
-        console.error(`Warning: could not verify Telegram credentials (${validation.reason}).`);
-        console.error(`  ${formatValidateError(validation)}`);
-        console.error('  Continuing anyway — re-run enable after connectivity is restored to confirm.');
-      } else {
-        console.error(`Error: Telegram credentials for agent "${agent}" failed validation.`);
-        console.error(`  ${formatValidateError(validation)}`);
-        console.error(`  Edit ${agentEnvPath} and re-run: officeos enable ${agent}`);
+    if (kind === 'slack') {
+      const missing = (['SLACK_BOT_TOKEN', 'SLACK_APP_TOKEN', 'SLACK_CHANNEL_ID'] as const).filter(k => !env[k]);
+      if (missing.length > 0) {
+        console.error(`Error: .env for agent "${agent}" (Slack) is missing required values: ${missing.join(', ')}`);
+        console.error(`Edit ${agentEnvPath} and set them before enabling.`);
         process.exit(1);
       }
-    } catch (err) {
-      // Defensive: validateCredentials should never throw, but if it does,
-      // fall through with a warning rather than blocking enable on a bug in
-      // the validator itself.
-      console.error(`Warning: Telegram credential validation crashed: ${err instanceof Error ? err.message : String(err)}`);
-      console.error('  Continuing enable. Investigate the validator if this recurs.');
+      // Validate the bot token via the Slack adapter (auth.test). Warn-not-block
+      // on failure: onboarding already validated the token live, and we don't
+      // want a transient Slack API hiccup to block enable.
+      try {
+        const adapter = resolveAdapter('slack', { botToken: env.SLACK_BOT_TOKEN });
+        const res = adapter ? await adapter.validateCredentials() : { ok: true } as { ok: boolean };
+        if (res.ok) {
+          console.log(`Slack validated: bot ${('identity' in res && res.identity) ? res.identity : 'ok'}, channel ${env.SLACK_CHANNEL_ID}`);
+        } else {
+          console.error(`Warning: could not verify Slack credentials (${('error' in res && res.error) || 'unknown'}).`);
+          console.error('  Continuing enable — re-run after fixing the token if this was not transient.');
+        }
+      } catch (err) {
+        console.error(`Warning: Slack credential validation crashed: ${err instanceof Error ? err.message : String(err)}. Continuing enable.`);
+      }
+    } else {
+      const missing = (['BOT_TOKEN', 'CHAT_ID'] as const).filter(k => !env[k]);
+      if (missing.length > 0) {
+        console.error(`Error: .env for agent "${agent}" (Telegram) is missing required values: ${missing.join(', ')}`);
+        console.error(`Edit ${agentEnvPath} and set BOT_TOKEN and CHAT_ID before enabling.`);
+        process.exit(1);
+      }
+      // self-chat trap preflight: validate BOT_TOKEN + CHAT_ID against the live
+      // Telegram API. Hard-fails on config-level reasons (bad_token,
+      // chat_not_found, bot_recipient, self_chat); warns but does not block on
+      // transient reasons (network_error, rate_limited).
+      try {
+        const telegramApi = new TelegramAPI(env.BOT_TOKEN);
+        const validation = await telegramApi.validateCredentials(env.CHAT_ID);
+        if (validation.ok) {
+          const label = validation.chatTitle ? ` (${validation.chatTitle})` : '';
+          console.log(
+            `Telegram validated: bot=@${validation.botUsername} chat=${env.CHAT_ID} type=${validation.chatType}${label}`,
+          );
+        } else if (validation.reason === 'network_error' || validation.reason === 'rate_limited') {
+          console.error(`Warning: could not verify Telegram credentials (${validation.reason}).`);
+          console.error(`  ${formatValidateError(validation)}`);
+          console.error('  Continuing anyway — re-run enable after connectivity is restored to confirm.');
+        } else {
+          console.error(`Error: Telegram credentials for agent "${agent}" failed validation.`);
+          console.error(`  ${formatValidateError(validation)}`);
+          console.error(`  Edit ${agentEnvPath} and re-run: officeos enable ${agent}`);
+          process.exit(1);
+        }
+      } catch (err) {
+        console.error(`Warning: Telegram credential validation crashed: ${err instanceof Error ? err.message : String(err)}`);
+        console.error('  Continuing enable. Investigate the validator if this recurs.');
+      }
     }
 
     const agents = readEnabledAgents(options.instance);

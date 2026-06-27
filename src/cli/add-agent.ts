@@ -348,7 +348,7 @@ export const addAgentCommand = new Command('add-agent')
 
     console.log(`\n  Agent "${name}" created.`);
     console.log(`\n  Next steps:`);
-    console.log(`    1. Edit ${join('orgs', org, 'agents', name, '.env')} with your Telegram settings`);
+    console.log(`    1. Edit ${join('orgs', org, 'agents', name, '.env')} with your channel credentials (Slack or Telegram)`);
     console.log(`    2. Customize identity files (IDENTITY.md, SOUL.md, GOALS.md)`);
     console.log(`    3. Start: officeos start ${name}\n`);
   });

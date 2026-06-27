@@ -121,7 +121,7 @@ export const initCommand = new Command('init')
     if (!existsSync(secretsPath)) {
       writeFileSync(secretsPath, [
         '# officeOs secrets for ' + orgName,
-        '# Add your Telegram bot token and other secrets here',
+        '# Add channel credentials here: Slack (SLACK_BOT_TOKEN, SLACK_APP_TOKEN, SLACK_CHANNEL_ID) or Telegram (BOT_TOKEN, CHAT_ID)',
         'BOT_TOKEN=',
         'CHAT_ID=',
         'ACTIVITY_CHAT_ID=',
@@ -215,7 +215,7 @@ export const initCommand = new Command('init')
 
     console.log(`\n  Organization "${orgName}" initialized.`);
     console.log(`\n  Next steps:`);
-    console.log(`    1. Add your Telegram bot token to orgs/${orgName}/secrets.env`);
+    console.log(`    1. Add channel credentials (Slack or Telegram) to orgs/${orgName}/secrets.env`);
     console.log(`    2. Add an agent: officeos add-agent <name> --template orchestrator`);
     console.log(`    3. Start: officeos start\n`);
   });
