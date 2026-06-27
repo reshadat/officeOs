@@ -1,21 +1,14 @@
-<table border="0" cellpadding="0" cellspacing="0">
-<tr>
-<td width="200" valign="middle">
-  <img src="assets/logo.svg" width="190" alt="officeOs — one light always on">
-</td>
-<td valign="middle" style="padding-left: 24px">
-  <h1>OFFICEOS</h1>
-  <p><em>An office of AI agents.<br>Your infra. Your Slack. Your rules.</em></p>
-  <p>
-    <img src="https://img.shields.io/badge/license-MIT-111111?style=flat-square" alt="MIT"><br>
-    <img src="https://img.shields.io/badge/node-20%2B-111111?style=flat-square" alt="Node 20+"><br>
-    <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux-111111?style=flat-square" alt="macOS / Linux"><br>
-    <img src="https://img.shields.io/badge/runtime-Claude%20Code%20%7C%20Codex-111111?style=flat-square" alt="Claude Code / Codex"><br>
-    <img src="https://img.shields.io/badge/Slack-Socket%20Mode-111111?style=flat-square" alt="Slack Socket Mode">
-  </p>
-</td>
-</tr>
-</table>
+<p align="center">
+  <img src="assets/logo.svg" width="560" alt="officeOs — one light always on">
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/license-MIT-111111?style=flat-square" alt="MIT">
+  <img src="https://img.shields.io/badge/node-20%2B-111111?style=flat-square" alt="Node 20+">
+  <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux-111111?style=flat-square" alt="macOS / Linux">
+  <img src="https://img.shields.io/badge/runtime-Claude%20Code%20%7C%20Codex-111111?style=flat-square" alt="Claude Code / Codex">
+  <img src="https://img.shields.io/badge/Slack-Socket%20Mode-111111?style=flat-square" alt="Slack Socket Mode">
+</p>
 
 ---
 
