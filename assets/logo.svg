@@ -1,59 +1,52 @@
-<svg width="340" height="290" viewBox="0 0 340 290" xmlns="http://www.w3.org/2000/svg">
+<svg width="240" height="235" viewBox="0 0 240 235" xmlns="http://www.w3.org/2000/svg">
   <!-- dark background pill -->
-  <rect width="340" height="290" rx="24" fill="#0d1117"/>
+  <rect width="240" height="235" rx="20" fill="#0d1117"/>
 
-  <!-- office building facade -->
-  <rect x="80" y="60" width="180" height="160" rx="6" fill="none" stroke="#e6edf3" stroke-width="3"/>
+  <!-- office building facade — recentered for 240px canvas -->
+  <rect x="30" y="30" width="180" height="160" rx="6" fill="none" stroke="#e6edf3" stroke-width="3"/>
 
-  <!-- roof line / top edge -->
-  <line x1="80" y1="92" x2="260" y2="92" stroke="#e6edf3" stroke-width="2"/>
+  <!-- roof line -->
+  <line x1="30" y1="62" x2="210" y2="62" stroke="#e6edf3" stroke-width="2"/>
 
   <!-- building columns -->
-  <line x1="140" y1="92" x2="140" y2="220" stroke="#e6edf3" stroke-width="1.5" opacity="0.4"/>
-  <line x1="200" y1="92" x2="200" y2="220" stroke="#e6edf3" stroke-width="1.5" opacity="0.4"/>
+  <line x1="90"  y1="62" x2="90"  y2="190" stroke="#e6edf3" stroke-width="1.5" opacity="0.4"/>
+  <line x1="150" y1="62" x2="150" y2="190" stroke="#e6edf3" stroke-width="1.5" opacity="0.4"/>
 
   <!-- floor lines -->
-  <line x1="80" y1="133" x2="260" y2="133" stroke="#e6edf3" stroke-width="1.5" opacity="0.4"/>
-  <line x1="80" y1="174" x2="260" y2="174" stroke="#e6edf3" stroke-width="1.5" opacity="0.4"/>
+  <line x1="30" y1="103" x2="210" y2="103" stroke="#e6edf3" stroke-width="1.5" opacity="0.4"/>
+  <line x1="30" y1="144" x2="210" y2="144" stroke="#e6edf3" stroke-width="1.5" opacity="0.4"/>
 
-  <!-- dark windows (all off) -->
-  <rect x="92"  y="104" width="34" height="18" rx="2" fill="#161b22"/>
-  <rect x="152" y="104" width="34" height="18" rx="2" fill="#161b22"/>
-  <rect x="214" y="104" width="34" height="18" rx="2" fill="#161b22"/>
+  <!-- dark windows -->
+  <rect x="42"  y="74"  width="34" height="18" rx="2" fill="#161b22"/>
+  <rect x="102" y="74"  width="34" height="18" rx="2" fill="#161b22"/>
+  <rect x="162" y="74"  width="34" height="18" rx="2" fill="#161b22"/>
 
-  <rect x="92"  y="145" width="34" height="18" rx="2" fill="#161b22"/>
-  <rect x="214" y="145" width="34" height="18" rx="2" fill="#161b22"/>
+  <rect x="42"  y="115" width="34" height="18" rx="2" fill="#161b22"/>
+  <rect x="162" y="115" width="34" height="18" rx="2" fill="#161b22"/>
 
-  <rect x="92"  y="186" width="34" height="18" rx="2" fill="#161b22"/>
-  <rect x="214" y="186" width="34" height="18" rx="2" fill="#161b22"/>
+  <rect x="42"  y="156" width="34" height="18" rx="2" fill="#161b22"/>
+  <rect x="162" y="156" width="34" height="18" rx="2" fill="#161b22"/>
 
-  <!-- ONE window lit up — 3am, someone's still working -->
-  <rect x="152" y="145" width="34" height="18" rx="2" fill="#22c55e" opacity="0.9"/>
-  <!-- terminal cursor blink inside lit window -->
-  <rect x="159" y="150" width="6" height="7" rx="1" fill="#0d1117" opacity="0.8"/>
-  <rect x="168" y="150" width="12" height="2" rx="1" fill="#0d1117" opacity="0.5"/>
-  <rect x="168" y="155" width="9"  height="2" rx="1" fill="#0d1117" opacity="0.5"/>
+  <!-- ONE lit window -->
+  <rect x="102" y="115" width="34" height="18" rx="2" fill="#22c55e" opacity="0.9"/>
+  <rect x="109" y="120" width="6"  height="7"  rx="1" fill="#0d1117" opacity="0.8"/>
+  <rect x="118" y="120" width="12" height="2"  rx="1" fill="#0d1117" opacity="0.5"/>
+  <rect x="118" y="125" width="9"  height="2"  rx="1" fill="#0d1117" opacity="0.5"/>
 
   <!-- door -->
-  <rect x="152" y="186" width="36" height="34" rx="3" fill="none" stroke="#e6edf3" stroke-width="2"/>
-  <circle cx="182" cy="203" r="2.5" fill="#e6edf3"/>
+  <rect x="102" y="156" width="36" height="34" rx="3" fill="none" stroke="#e6edf3" stroke-width="2"/>
+  <circle cx="132" cy="173" r="2.5" fill="#e6edf3"/>
 
   <!-- ground -->
-  <line x1="60" y1="220" x2="280" y2="220" stroke="#e6edf3" stroke-width="2.5"/>
+  <line x1="10" y1="190" x2="230" y2="190" stroke="#e6edf3" stroke-width="2.5"/>
 
-  <!-- stars — it's 3am -->
-  <circle cx="44"  cy="48"  r="1.5" fill="#e6edf3" opacity="0.6"/>
-  <circle cx="72"  cy="32"  r="1"   fill="#e6edf3" opacity="0.5"/>
-  <circle cx="290" cy="44"  r="1.5" fill="#e6edf3" opacity="0.6"/>
-  <circle cx="308" cy="28"  r="1"   fill="#e6edf3" opacity="0.5"/>
-  <circle cx="170" cy="24"  r="1"   fill="#e6edf3" opacity="0.4"/>
-  <circle cx="52"  cy="70"  r="1"   fill="#e6edf3" opacity="0.3"/>
-  <circle cx="300" cy="68"  r="1"   fill="#e6edf3" opacity="0.3"/>
+  <!-- stars -->
+  <circle cx="14"  cy="20" r="1.5" fill="#e6edf3" opacity="0.6"/>
+  <circle cx="28"  cy="10" r="1"   fill="#e6edf3" opacity="0.5"/>
+  <circle cx="218" cy="18" r="1.5" fill="#e6edf3" opacity="0.6"/>
+  <circle cx="228" cy="8"  r="1"   fill="#e6edf3" opacity="0.5"/>
+  <circle cx="120" cy="12" r="1"   fill="#e6edf3" opacity="0.4"/>
 
   <!-- moon -->
-  <path d="M316 55 Q304 68 316 81 Q296 74 296 68 Q296 62 316 55Z" fill="#e6edf3" opacity="0.7"/>
-
-  <!-- label -->
-  <text x="170" y="256" font-family="ui-monospace, SFMono-Regular, monospace" font-size="32" font-weight="800" fill="#e6edf3" text-anchor="middle" letter-spacing="10">OFFICEOS</text>
-  <text x="170" y="277" font-family="ui-monospace, SFMono-Regular, monospace" font-size="10" fill="#8b949e" text-anchor="middle" letter-spacing="3">one light always on</text>
+  <path d="M222 38 Q212 50 222 62 Q204 55 204 50 Q204 44 222 38Z" fill="#e6edf3" opacity="0.7"/>
 </svg>
