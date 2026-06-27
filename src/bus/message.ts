@@ -39,8 +39,14 @@ function hmacVerify(key: string, payload: string, sig: string): boolean {
   }
 }
 
-function signPayload(msgId: string, from: string, to: string, text: string): string {
-  return `${msgId}:${from}:${to}:${text}`;
+// MAC the full routing-relevant envelope. reply_to/request_id/origin_channel
+// drive where a reply is delivered — leaving them unsigned let a local writer
+// retarget a reply without invalidating the signature.
+function signPayload(m: {
+  id: string; from: string; to: string; text: string;
+  reply_to?: string | null; request_id?: string; origin_channel?: string;
+}): string {
+  return [m.id, m.from, m.to, m.text, m.reply_to ?? '', m.request_id ?? '', m.origin_channel ?? ''].join(':');
 }
 
 /**
@@ -77,10 +83,10 @@ export function sendMessage(
     timestamp: new Date().toISOString().replace(/\.\d{3}Z$/, '.000Z'),
     text,
     reply_to: replyTo || null,
-    ...(signingKey ? { sig: hmacSign(signingKey, signPayload(msgId, from, to, text)) } : {}),
     ...(origin?.request_id ? { request_id: origin.request_id } : {}),
     ...(origin?.origin_channel ? { origin_channel: origin.origin_channel } : {}),
   };
+  if (signingKey) message.sig = hmacSign(signingKey, signPayload(message));
 
   // Write to target agent's inbox
   const inboxDir = join(paths.ctxRoot, 'inbox', to);
@@ -131,7 +137,7 @@ export function checkInbox(paths: BusPaths): InboxMessage[] {
 
         // Security (H10): Verify HMAC signature if key is available and message has sig.
         if (signingKey && msg.sig) {
-          const valid = hmacVerify(signingKey, signPayload(msg.id, msg.from, msg.to, msg.text), msg.sig);
+          const valid = hmacVerify(signingKey, signPayload(msg), msg.sig);
           if (!valid) {
             console.error(`[bus/message] SECURITY: Message ${msg.id} from '${msg.from}' failed HMAC verification — rejecting`);
             const errDir = join(inbox, '.errors');
