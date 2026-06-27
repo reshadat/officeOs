@@ -26,7 +26,7 @@ function parseEnvFile(filePath: string): Record<string, string> {
 }
 
 export const dashboardCommand = new Command('dashboard')
-  .option('--port <port>', 'Port to run dashboard on', '3000')
+  .option('--port <port>', 'Port to run dashboard on', '3001')
   .option('--instance <id>', 'Instance ID', 'default')
   .option('--build', 'Build for production first (recommended for Cloudflare Tunnel / remote access)')
   .option('--install', 'Install dashboard dependencies first')

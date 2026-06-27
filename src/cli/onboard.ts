@@ -283,6 +283,9 @@ export function wireSlackHooks(agentDir: string, projectRoot: string): boolean {
     return false;
   }
   settings.hooks = {
+    // Preserve any template hook blocks we don't manage here (e.g. Stop) — only
+    // override the channel-specific ones below, so wiring never drops a block.
+    ...(settings.hooks ?? {}),
     PermissionRequest: [
       { matcher: 'ExitPlanMode', hooks: [{ type: 'command', command: slack('hook-planmode-slack.js'), timeout: 1860 }] },
       { hooks: [{ type: 'command', command: slack('hook-permission-slack.js'), timeout: 1860 }] },

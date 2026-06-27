@@ -202,6 +202,22 @@ export const addAgentCommand = new Command('add-agent')
       }
     }
 
+    // Persist the template this agent was created from. `officeos doctor`'s
+    // template-drift check needs it: without it doctor defaults to the 'agent'
+    // template (which has a Stop hook orchestrators don't use) and false-flags
+    // every orchestrator as "Missing hook block(s): Stop".
+    if (existsSync(configPath)) {
+      try {
+        const cfg = JSON.parse(readFileSync(configPath, 'utf-8'));
+        if (cfg.template !== options.template) {
+          cfg.template = options.template;
+          writeFileSync(configPath, JSON.stringify(cfg, null, 2) + '\n', 'utf-8');
+        }
+      } catch (err) {
+        console.error(`Warning: failed to set template field in config.json: ${(err as Error).message}`);
+      }
+    }
+
     // Create .env placeholder with helpful comments
     const envPath = join(agentDir, '.env');
     if (!existsSync(envPath)) {
